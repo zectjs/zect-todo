@@ -1,0 +1,36 @@
+{
+  "name": "zect",
+  "main": "index.js",
+  "homepage": "https://github.com/switer/Zect",
+  "authors": [
+    "switer <guankaishe@gmail.com>"
+  ],
+  "keywords": [
+    "web",
+    "component",
+    "mvvm",
+    "two",
+    "way",
+    "binding",
+    "data-binding",
+    "lightweight",
+    "directive"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "_release": "f51cdbf2f1",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "f51cdbf2f1220ca3da1b7d63abacb20f8948fd13"
+  },
+  "_source": "git://github.com/switer/Zect.git",
+  "_target": "*",
+  "_originalSource": "zect"
+}
