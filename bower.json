@@ -1,0 +1,7 @@
+{
+  "name": "todomvc-zect",
+  "dependencies": {
+    "vue": "~0.11.3",
+    "todomvc-common": "~0.3.0"
+  }
+}
