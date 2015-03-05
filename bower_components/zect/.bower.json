@@ -24,11 +24,11 @@
     "test",
     "tests"
   ],
-  "_release": "f51cdbf2f1",
+  "_release": "804bbcbbdf",
   "_resolution": {
     "type": "branch",
     "branch": "master",
-    "commit": "f51cdbf2f1220ca3da1b7d63abacb20f8948fd13"
+    "commit": "804bbcbbdf9e837c3cf849de3ae3885e545a659a"
   },
   "_source": "git://github.com/switer/Zect.git",
   "_target": "*",

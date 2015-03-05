@@ -299,7 +299,7 @@ function ViewModel(options) {
                         $(node).attr('is')
                 )
                 if (!isRoot) {
-                    inst.mount(node, true)
+                    inst.$mount(node)
                 }
                 _elements.push(inst)
                 return inst
@@ -316,7 +316,7 @@ function ViewModel(options) {
                         $(node).attr('items')
                 )
                 if (!isRoot) {
-                    inst.mount(node, true)
+                    inst.$mount(node)
                 }
                 _elements.push(inst)
                 return inst
@@ -349,7 +349,7 @@ function ViewModel(options) {
         /**
          *  Watch
          */
-        var sep = ','
+        var sep = ';'
         function parseExpr (expr) {
             var name
             var expr = expr.replace(/^[^:]+:/, function (m) {
@@ -464,14 +464,20 @@ function ViewModel(options) {
                 var expr = ast.dires[dname]
 
                 if (ast.dires.hasOwnProperty(dname)) {
-                    var sep = ','
+                    var sep = ';'
                     // multiple defines expression parse
                     if (def.multi && expr.match(sep)) {
-                        Compiler.stripExpr(expr).split(sep).forEach(function(item) {
-                            _directives.push(new Directive(vm, scope, node, def, dname, '{' + item + '}'))
-                        })
+                        Compiler.stripExpr(expr)
+                                .split(sep)
+                                .forEach(function(item) {
+                                    _directives.push(
+                                        new Directive(vm, scope, node, def, dname, '{' + item + '}')
+                                    )
+                                })
                     } else {
-                        _directives.push(new Directive(vm, scope, node, def, dname, expr))
+                        _directives.push(
+                            new Directive(vm, scope, node, def, dname, expr)
+                        )
                     }
                 }
             })

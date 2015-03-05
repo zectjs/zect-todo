@@ -48,7 +48,10 @@ function _strip(t) {
     return t.trim().match(/^\{([\s\S]*)\}$/m)[1]
 }
 
-
+/**
+ *  Compoiler constructor for wrapping node with consistent API
+ *  @node <Node>
+ */
 function compiler (node) {
     this.$el = node
 }
@@ -63,25 +66,37 @@ compiler.inherit = function (Ctor) {
         Ctor.apply(this, arguments)
     }
 }
-compiler.prototype.bundle = function () {
+compiler.prototype.$bundle = function () {
     return this.$el
 }
-compiler.prototype.mount = function (pos, replace) {
-    if (replace) {
-        $(pos).replace(this.bundle())
-    } else {
-        pos.parentNode.insertBefore(this.bundle(), pos)
-    }
-}
-compiler.prototype.floor = function () {
+compiler.prototype.$floor = function () {
     return this.$el
 }
-compiler.prototype.ceil = function () {
+compiler.prototype.$ceil = function () {
     return this.$el
 }
-compiler.prototype.destroy = function () {
-    // TODO
-    $(this.$el).remove()
+compiler.prototype.$mount = function (pos) {
+    $(pos).replace(this.$bundle())
+    return this
+}
+compiler.prototype.$remove = function () {
+    var $el = this.$bundle()
+    $el.parentNode && $($el).remove()
+    return this
+}
+compiler.prototype.$appendTo = function (pos) {
+    $(pos).appendChild(this.$bundle())
+    return this
+}
+compiler.prototype.$insertBefore = function (pos) {
+    pos.parentNode.insertBefore(this.$bundle(), pos)
+    return this
+}
+compiler.prototype.$insertAfter = function (pos) {
+    pos.parentNode.insertBefore(this.$bundle(), pos.nextSibling)
+    return this
+}
+compiler.prototype.$destroy = function () {
     this.$el = null
     return this
 }
@@ -111,7 +126,7 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     d.vm = vm
     d.id = _did++
 
-    var bind = def.bind
+    var _bind = def.bind
     var unbind = def.unbind
     var upda = def.update
     var prev
@@ -141,7 +156,7 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     bindParams.push(prev)
     bindParams.push(expr)
     // ([property-name], expression-value, expression) 
-    bind && bind.apply(d, bindParams)
+    _bind && _bind.apply(d, bindParams)
     upda && upda.call(d, prev)
 
     // watch variable changes of expression
@@ -162,7 +177,7 @@ var _eid = 0
 compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
     var d = this
-    var bind = def.bind
+    var _bind = def.bind
     var unbind = def.unbind
     var upda = def.update
     var isExpr = !!_isExpr(expr)
@@ -183,9 +198,9 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
     d.$container.appendChild(d.$before)
     d.$container.appendChild(d.$after)
 
-    d.bundle = function () {
-        var $ceil = this.ceil()
-        var $floor = this.floor()
+    d.$bundle = function () {
+        var $ceil = this.$ceil()
+        var $floor = this.$floor()
         var $con = this.$container
         var that = this
 
@@ -199,10 +214,10 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
         }
         return $con
     }
-    d.floor = function () {
+    d.$floor = function () {
         return this.$after
     }
-    d.ceil = function () {
+    d.$ceil = function () {
         return this.$before
     }
     d.destroy = function () {
@@ -233,7 +248,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
     prev = isExpr ? _exec(expr) : expr
 
-    bind && bind.call(d, prev)
+    _bind && _bind.call(d, prev)
     upda && upda.call(d, prev)
 
     if (def.watch !== false && isExpr) {

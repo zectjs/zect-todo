@@ -141,7 +141,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var components = [gcomps, options.components || {}]
 	    var directives = allDirectives.concat([options.directives || {}])
 
-	    var _directives = [] // private directive instance temp    
+	    var _directives = [] // private refs for all directives instance of the vm    
+	    var _components = [] // private refs for all components    
+	    var _elements = [] // private refs for all elments    
+
 	    /**
 	     *  Mounted element detect
 	     */
@@ -239,6 +242,39 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return compiler
 	    }
 
+	    var beforeDestroy = options.beforeDestroy
+	    vm.$destroy = function () {
+	        beforeDestroy && beforeDestroy.call(vm)
+
+	        [_directives, _components, _directives].forEach(function (items) {
+	            items.forEach(function (inst) {
+	                inst.$destroy()
+	            })
+	        })
+
+	        $data.$destroy()
+
+	        // instance methods/properties
+	        vm.$el = null
+	        vm.$get = null
+	        vm.$set = null
+	        vm.$refs = null
+	        vm.$watch = null
+	        vm.$unwatch = null
+	        vm.$compile = null
+	        vm.$component = null
+
+	        // private vars
+	        directives = null
+	        components = null
+	        _directives = null
+	        _components = null
+	        _elements = null
+
+	        // marked
+	        vm.$isDestroy = true
+	    }
+
 	    vm.$compiler = vm.$compile(el)
 
 	    /**
@@ -264,7 +300,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                /**
 	                 *  scope syntax
 	                 */
-	                if (inst = compileBlock(node, scope, isRoot)) {
+	                if (inst = compileElement(node, scope, isRoot)) {
 	                    into = false
 	                    break
 	                }
@@ -314,7 +350,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /**
 	     *  Compile element for block syntax handling
 	     */
-	    function compileBlock(node, scope, isRoot) {
+	    function compileElement(node, scope, isRoot) {
 	        var tagName = node.tagName
 	        switch(true) {
 	            /**
@@ -330,8 +366,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        $(node).attr('is')
 	                )
 	                if (!isRoot) {
-	                    inst.mount(node, true)
+	                    inst.$mount(node)
 	                }
+	                _elements.push(inst)
 	                return inst
 	            /**
 	             *  <*-repeat></*-repeat>
@@ -346,8 +383,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        $(node).attr('items')
 	                )
 	                if (!isRoot) {
-	                    inst.mount(node, true)
+	                    inst.$mount(node)
 	                }
+	                _elements.push(inst)
 	                return inst
 	        }
 	    }
@@ -378,7 +416,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        /**
 	         *  Watch
 	         */
-	        var sep = ','
+	        var sep = ';'
 	        function parseExpr (expr) {
 	            var name
 	            var expr = expr.replace(/^[^:]+:/, function (m) {
@@ -437,6 +475,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        }
 	        // set ref to parentVM
 	        ref && (parentVM.$refs[ref] = compVM)
+
+	        _components.push(compVM)
 	        return compVM
 	    }
 
@@ -479,7 +519,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	         *  Attributes binding
 	         */
 	        util.objEach(ast.attrs, function(name, value) {
-	            new AttributeDirective(vm, scope, node, name, value)
+	            _directives.push(new AttributeDirective(vm, scope, node, name, value))
 	        })
 
 	        /**
@@ -491,14 +531,20 @@ return /******/ (function(modules) { // webpackBootstrap
 	                var expr = ast.dires[dname]
 
 	                if (ast.dires.hasOwnProperty(dname)) {
-	                    var sep = ','
+	                    var sep = ';'
 	                    // multiple defines expression parse
 	                    if (def.multi && expr.match(sep)) {
-	                        Compiler.stripExpr(expr).split(sep).forEach(function(item) {
-	                            new Directive(vm, scope, node, def, dname, '{' + item + '}')
-	                        })
+	                        Compiler.stripExpr(expr)
+	                                .split(sep)
+	                                .forEach(function(item) {
+	                                    _directives.push(
+	                                        new Directive(vm, scope, node, def, dname, '{' + item + '}')
+	                                    )
+	                                })
 	                    } else {
-	                        new Directive(vm, scope, node, def, dname, expr)
+	                        _directives.push(
+	                            new Directive(vm, scope, node, def, dname, expr)
+	                        )
 	                    }
 	                }
 	            })
@@ -2007,7 +2053,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return t.trim().match(/^\{([\s\S]*)\}$/m)[1]
 	}
 
-
+	/**
+	 *  Compoiler constructor for wrapping node with consistent API
+	 *  @node <Node>
+	 */
 	function compiler (node) {
 	    this.$el = node
 	}
@@ -2022,25 +2071,37 @@ return /******/ (function(modules) { // webpackBootstrap
 	        Ctor.apply(this, arguments)
 	    }
 	}
-	compiler.prototype.bundle = function () {
+	compiler.prototype.$bundle = function () {
 	    return this.$el
 	}
-	compiler.prototype.mount = function (pos, replace) {
-	    if (replace) {
-	        $(pos).replace(this.bundle())
-	    } else {
-	        pos.parentNode.insertBefore(this.bundle(), pos)
-	    }
-	}
-	compiler.prototype.floor = function () {
+	compiler.prototype.$floor = function () {
 	    return this.$el
 	}
-	compiler.prototype.ceil = function () {
+	compiler.prototype.$ceil = function () {
 	    return this.$el
 	}
-	compiler.prototype.destroy = function () {
-	    // TODO
-	    $(this.$el).remove()
+	compiler.prototype.$mount = function (pos) {
+	    $(pos).replace(this.$bundle())
+	    return this
+	}
+	compiler.prototype.$remove = function () {
+	    var $el = this.$bundle()
+	    $el.parentNode && $($el).remove()
+	    return this
+	}
+	compiler.prototype.$appendTo = function (pos) {
+	    $(pos).appendChild(this.$bundle())
+	    return this
+	}
+	compiler.prototype.$insertBefore = function (pos) {
+	    pos.parentNode.insertBefore(this.$bundle(), pos)
+	    return this
+	}
+	compiler.prototype.$insertAfter = function (pos) {
+	    pos.parentNode.insertBefore(this.$bundle(), pos.nextSibling)
+	    return this
+	}
+	compiler.prototype.$destroy = function () {
 	    this.$el = null
 	    return this
 	}
@@ -2070,7 +2131,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    d.vm = vm
 	    d.id = _did++
 
-	    var bind = def.bind
+	    var _bind = def.bind
 	    var unbind = def.unbind
 	    var upda = def.update
 	    var prev
@@ -2100,7 +2161,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    bindParams.push(prev)
 	    bindParams.push(expr)
 	    // ([property-name], expression-value, expression) 
-	    bind && bind.apply(d, bindParams)
+	    _bind && _bind.apply(d, bindParams)
 	    upda && upda.call(d, prev)
 
 	    // watch variable changes of expression
@@ -2121,7 +2182,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
 	    var d = this
-	    var bind = def.bind
+	    var _bind = def.bind
 	    var unbind = def.unbind
 	    var upda = def.update
 	    var isExpr = !!_isExpr(expr)
@@ -2142,9 +2203,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    d.$container.appendChild(d.$before)
 	    d.$container.appendChild(d.$after)
 
-	    d.bundle = function () {
-	        var $ceil = this.ceil()
-	        var $floor = this.floor()
+	    d.$bundle = function () {
+	        var $ceil = this.$ceil()
+	        var $floor = this.$floor()
 	        var $con = this.$container
 	        var that = this
 
@@ -2158,10 +2219,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	        }
 	        return $con
 	    }
-	    d.floor = function () {
+	    d.$floor = function () {
 	        return this.$after
 	    }
-	    d.ceil = function () {
+	    d.$ceil = function () {
 	        return this.$before
 	    }
 	    d.destroy = function () {
@@ -2192,7 +2253,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    prev = isExpr ? _exec(expr) : expr
 
-	    bind && bind.call(d, prev)
+	    _bind && _bind.call(d, prev)
 	    upda && upda.call(d, prev)
 
 	    if (def.watch !== false && isExpr) {
@@ -2442,9 +2503,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'on': {
 	            multi: true,
 	            watch: false,
-	            bind: function(evtType, handler /*, expression*/ ) {
+	            bind: function(evtType, handler, expression ) {
 	                var fn = handler
-	                if (util.type(fn) !== 'function') return console.warn('"' + conf.namespace + 'on" only accept function')
+	                if (util.type(fn) !== 'function') 
+	                    return console.warn('"' + conf.namespace + 'on" only accept function. {' + expression + '}')
 	                this.fn = fn.bind(this.vm)
 	                this.type = evtType
 	                this.$el.addEventListener(evtType, this.fn, false)
@@ -2509,15 +2571,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	                this._mount = function () {
 	                    if (mounted) return
 	                    mounted = true
-	                    var $floor = this.floor()
+	                    var $floor = this.$floor()
 	                    $floor.parentNode.insertBefore(this._tmpCon, $floor)
 
 	                }
 	                this._unmount = function () {
 	                    if (!mounted) return
 	                    mounted = false
-	                    var $ceil = this.ceil()
-	                    var $floor = this.floor()
+	                    var $ceil = this.$ceil()
+	                    var $floor = this.$floor()
 
 	                    util.domRange($ceil.parentNode, $ceil, $floor)
 	                        .forEach(function(n) {
@@ -2534,7 +2596,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    this._mount()
 	                } else {
 	                    this.compiled = true
-	                    var cvm = this.vm.$compile(this._tmpCon)
+	                    this.vm.$compile(this._tmpCon)
 	                    this._mount()
 	                }
 	            }
@@ -2546,11 +2608,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	                if (!this.child) {
 	                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node')
 	                }
-	            },
-	            destroy: function () {
-	                this.$container = null
-	                this.$before = null
-	                this.$after = null
 	            },
 	            update: function(items) {
 	                if (!items || !items.forEach) {
@@ -2613,18 +2670,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	                this.$vms = vms
 	                this.last = util.copyArray(items)
 
-	                var $floor = this.floor()
+	                var $floor = this.$floor()
 	                // from rear to head
 	                var len = vms.length
 	                var i = 0
 	                while (i < len) {
 	                    var v = vms[i++]
-	                    $floor.parentNode.insertBefore(v.$compiler.bundle(), $floor)
+	                    v.$compiler.$insertBefore($floor)
 	                }
 
 	                oldVms && oldVms.forEach(function(v) {
-	                    v.$compiler.bundle()
-	                    v.$compiler.destroy()
+	                    v.$compiler.$remove().$destroy()
 	                })
 	            }
 	        }
