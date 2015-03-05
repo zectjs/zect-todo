@@ -81,8 +81,9 @@
 		methods: {
 			// filter
 			filterTodos: function () {
-				console.log(this.$data.todos.filter(this.$data.filters[this.$data.activeFilter]))
-				return this.$data.todos.filter(this.$data.filters[this.$data.activeFilter]);
+				return this.$data.todos.filter(
+					this.$data.filters[this.$data.activeFilter]
+				);
 			},
 			// methods
 			addTodo: function (e) {
