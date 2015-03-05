@@ -42,14 +42,16 @@
 		// before focusing on the input field.
 		// http://vuejs.org/guide/directives.html#Writing_a_Custom_Directive
 		directives: {
-			'todo-focus': function (value) {
-				if (!value) {
-					return;
+			'todo-focus': {
+				bind: function (value) {
+					if (!value) {
+						return;
+					}
+					var el = this.el;
+					setTimeout(function () {
+						el.focus();
+					}, 0);
 				}
-				var el = this.el;
-				setTimeout(function () {
-					el.focus();
-				}, 0);
 			}
 		},
 
@@ -89,7 +91,6 @@
 			addTodo: function (e) {
 				
 				if(e.keyCode !== 13){
-					console.log(e.keyCode)
 					return
 				}
 
@@ -113,7 +114,6 @@
 
 			doneEdit: function (todo) {
 				if(e.keyCode === 13){
-					console.log(e.keyCode)
 					return
 				}
 
@@ -128,8 +128,7 @@
 			},
 
 			cancelEdit: function (todo) {
-				if(e.keyCode === 13){
-					console.log(e.keyCode)
+				if(e.keyCode === 27){
 					return
 				}
 				this.$data.editedTodo = null;
