@@ -18,12 +18,12 @@
 			<section id="main" v-show="{todos.length}" v-cloak>
 				<input id="toggle-all" type="checkbox" v-model="allDone">
 				<ul id="todo-list">
-					<v-repeat items="{filterTodos.call($vm)}">
+					<v-repeat items="{todos}">
 						<li class="todo"  v-class="{completed: completed; editing: $value == editedTodo}">
 							<div class="view">
 								<input class="toggle" type="checkbox" v-model="{'filterTodos' + $index + 'completed'}">
 								<label  v-on="{dblclick: editTodo}">{title}</label>
-								<button class="destroy" v-on="{click: removeTodo}"></button>
+								<button class="destroy" v-on="{click: removeTodo.bind($vm)}"></button>
 							</div>
 							<input class="edit" type="text" 
 								v-model="title" 
