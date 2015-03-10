@@ -39,9 +39,9 @@
 					</v-repeat>
 				</ul>
 			</section>
-			<!-- <footer id="footer" v-show="todos.length" v-cloak>
+			<footer id="footer" v-show="todos.length" v-cloak>
 				<span id="todo-count">
-					<strong v-text="remaining"></strong> {{remaining | pluralize item}} left
+					<strong>{remaining}</strong>
 				</span>
 
 				<ul id="filters">
@@ -49,10 +49,10 @@
 					<li><a href="#/active" v-class="{selected: activeFilter == 'active'}">Active</a></li>
 					<li><a href="#/completed" v-class="{selected: activeFilter == 'completed'}">Completed</a></li>
 				</ul>
-				<button id="clear-completed" v-on="{click: removeCompleted}" v-show="todos.length > remaining">
+				<button id="clear-completed" v-on="{click: removeCompleted}" v-show="{todos.length > remaining}">
 					Clear completed ({todos.length - remaining})
 				</button>
-			</footer> -->
+			</footer>
 		</section>
 
 		<footer id="info">

@@ -57,6 +57,7 @@
 		// http://vuejs.org/guide/computed.html
 		computed: {
 			remaining: function () {
+				console.log(this.$data.todos.filter(this.$data.filters.active).length)
 				return this.$data.todos.filter(this.$data.filters.active).length;
 			},
 			allDone: {
@@ -99,6 +100,7 @@
 			},
 
 			editTodo: function (todo) {
+				console.log('dbclick')
 				this.beforeEditCache = todo.title;
 				this.$data.editedTodo = todo;
 			},
