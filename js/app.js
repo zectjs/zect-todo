@@ -93,8 +93,9 @@
 				this.$data.newTodo = '';
 			},
 
-			removeTodo: function (todo) {
-				this.$data.todos.$remove(todo.$data);
+			removeTodo: function (e) {
+				var index = e.currentTarget.dataset.index
+				this.$data.todos.splice(index, 1)
 			},
 
 			editTodo: function (todo) {
