@@ -54,22 +54,22 @@ module.exports = function(Zect) {
                     this._mount()
                 } else {
                     this.compiled = true
-                    this.vm.$compile(this._tmpCon)
+                    this.$vm.$compile(this._tmpCon)
                     this._mount()
                 }
             }
         },
         'repeat': {
-            bind: function(/*items, expr*/) {
+            bind: function(items, expr) {
                 this.child = this.$el.firstElementChild
-
+                this.expr = expr
                 if (!this.child) {
-                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node')
+                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node. {' + expr + '}')
                 }
             },
             update: function(items) {
                 if (!items || !items.forEach) {
-                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data')
+                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
                 }
                 var that = this
                 function createSubVM(item, index) {
@@ -79,9 +79,9 @@ module.exports = function(Zect) {
                     data.$index = index
                     data.$value = item
 
-                    var cvm = that.vm.$compile(subEl, {
+                    var cvm = that.$vm.$compile(subEl, {
                         data: data,
-                        $parent: that.scope || {}
+                        $parent: that.$scope || {}
                     })
                     return {
                         $index: index,

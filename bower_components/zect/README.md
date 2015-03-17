@@ -57,18 +57,26 @@ var app = new Zect({
 
 - Direcitves
     * [on]()
-    * [ref]() // TBD
     * [show]()
     * [attr]()
     * [class]()
     * [style]()
     * [component]() // TBD
 
+- Other
+    * [escape for {expression}]() // TBD
+    * [unescape for {- expression}]() // TBD
 
 ## Guide
 - **Custom directive**
 
-Options's Methods: `bind`, `update`, 'unbind'. `update`, `unbind` is optional. Example below:
+Options's Methods: `bind`, `update`, `unbind`. `update`, `unbind` is optional. 
+Directive instance property:
+* **$vm** Mounted VM of the directive
+* **$el**   Mounted target Node of the directive
+* **$id**   Current directive instance id
+
+Example below:
 
 ```html
 <div z-tap="{onClick}"></div>
@@ -88,29 +96,85 @@ Zect.directive('tap', {
 - **Two way binding**
 
 ```html
-<input type="text" z-on="{change: onChange}" id="con" z-model="search" />
+<div id="con">
+    <input type="text" 
+        id="con"
+        z-on="{change: onChange}"  
+        z-model="search" 
+    />
+    <input type="submit" z-on="onSubmit" value="submit">
+</div>
 ```
 
 ```js
-Zect.directive('model', {
-    bind: function (state) {
-        this.vm.$data.$watch(function)
-    }
-})
 new Zect({
     el: '#con',
     data: {
-        search: ''
-    },
-    ready: function () {
-        
+        search: 'Please input'
     },
     methods: {
-        onChange: function (e) {
-            
+        onSubmit: function () {
+            this.$data.search // input value
         }
     }
 })
+```
+
+-  **Use filter**
+
+```html
+<ul id="con">
+    <z-repeat items="{lessThanFour(items)}">
+        <li>{- value}</li>
+    </z-repeat>
+</ul>
+```
+
+```js
+new Zect({
+    el: '#con',
+    data: function () {
+        return [1,2,3,4,5]
+    },
+    methods: {
+        lessThanFour: function (items) {
+            return items.filter(function (item) {
+                if (item < 4) return true
+            })
+        }
+    }
+})
+```
+
+Render result:
+
+```html
+<ul id="con">
+    <li>1</li>
+    <li>2</li>
+    <li>3</li>
+</ul>
+```
+
+- **Template syntax**
+
+```html
+<!-- escaped HTML value -->
+<p>{title}</p>
+
+<!-- unescaped HTML value -->
+<p>{$ title}</p>
+
+<!-- if -->
+<z-if is="{title}">
+    <div>{title}</div>
+</z-if>
+
+<!-- repeat -->
+<z-repeat items="{items}">
+    <div>{- value}</div>
+</z-repeat>
+
 ```
 
 ## License

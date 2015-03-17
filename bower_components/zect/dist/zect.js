@@ -69,9 +69,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	var is = __webpack_require__(3)
 	var Mux = __webpack_require__(4)
 	var util = __webpack_require__(5)
-	var conf = __webpack_require__(6)
+	var conf = __webpack_require__(8)
 
-	var Compiler = __webpack_require__(7)
+	var Compiler = __webpack_require__(6)
 	var Directive = Compiler.Directive
 	var AttributeDirective = Compiler.Attribute
 	var TextDirective = Compiler.Text
@@ -80,7 +80,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	/**
 	 *  private vars
 	 */
-	var presetDirts = __webpack_require__(8)(Zect)  // preset directives getter
+	var presetDirts = __webpack_require__(7)(Zect)  // preset directives getter
 	var elements = __webpack_require__(9)(Zect)      // preset directives getter
 	var allDirectives = [presetDirts, {}]                // [preset, global]
 	var gdirs = allDirectives[1]
@@ -106,7 +106,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        ;['data', 'methods', 'directives', 'components'].forEach(function (prop) {
 	            insOpt[prop] = {}
 	            util.extend(insOpt[prop], funcOrObject(options, prop), funcOrObject(opt, prop))
-
 	        })
 	        util.insertProto(this, Zect.prototype)
 	        return ViewModel.call(this, insOpt)
@@ -175,10 +174,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /**
 	     *  assign methods
 	     */
-	    var methods = vm.$methods = options.methods
-	    util.objEach(methods, function(k, v) {
-	        vm[k] = v
+	    var methods = {}
+	    util.objEach(options.methods, function(k, v) {
+	        if (util.type(v) !== 'function') return console.warn(k + ' is not a function.')
+	        vm[k] = methods[k] = v.bind(vm)
 	    })
+	    vm.$methods = methods
 
 	    var $data
 	    var dataOpt = {}
@@ -696,7 +697,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	'use strict';
-	var conf = __webpack_require__(6)
+	var conf = __webpack_require__(8)
 
 	module.exports = {
 	    Element: function(el) {
@@ -1832,6 +1833,15 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	'use strict';
+	var escapeCharMap = {
+	    '&': '&amp;',
+	    '<': '&lt;',
+	    '>': '&gt;',
+	    '\"': '&quot;',
+	    '\'': '&#x27;',
+	    '/': '&#x2F;'
+	}
+	var escapeRex = new RegExp(Object.keys(escapeCharMap).join('|'), 'g')
 
 	module.exports = {
 	    type: function(obj) {
@@ -1979,28 +1989,18 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var subkp = src.replace(dest, '').match(/^[\.\[]/)
 	            return start && subkp
 	        }
+	    },
+	    escape: function (str) {
+	        if (!this.type(str) == 'string') return str
+	        return str.replace(escapeRex, function (m) {
+	            return escapeCharMap[m]
+	        })
 	    }
 	}
 
 
 /***/ },
 /* 6 */
-/***/ function(module, exports, __webpack_require__) {
-
-	'use strict';
-
-	var _namespace = 'z-'
-	module.exports = {
-	    set namespace (n) {
-	        _namespace = n + '-'
-	    },
-	    get namespace () {
-	        return _namespace
-	    }
-	 }
-
-/***/ },
-/* 7 */
 /***/ function(module, exports, __webpack_require__) {
 
 	'use strict';
@@ -2035,12 +2035,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	 *  @return <Function> unwatch
 	 */
 	function _watch(vm, vars, update) {
+	    function _handler (kp) {
+	        vars.forEach(function(key, index) {
+	            if (_relative(kp, key)) update.call(null, key, index)
+	        })
+	    }
 	    if (vars && vars.length) {
-	        function _handler (kp) {
-	            vars.forEach(function(key, index) {
-	                if (_relative(kp, key)) update.call(null, key, index)
-	            })
-	        }
 	        vm.$watch(_handler)
 	        return function () {
 	            vm.$unwatch(_handler)
@@ -2050,7 +2050,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	function _strip(t) {
-	    return t.trim().match(/^\{([\s\S]*)\}$/m)[1]
+	    return t.trim()
+	            .match(/^\{([\s\S]*)\}$/m)[1]
+	            .replace(/^- /, '')
+	}
+
+	function _isUnescape(t) {
+	    return t.match(/^\{\- /)
 	}
 
 	/**
@@ -2128,10 +2134,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 
 	    d.$el = tar
-	    d.vm = vm
-	    d.id = _did++
+	    d.$vm = vm
+	    d.$id = _did++
 
-	    var _bind = def.bind
+	    var bind = def.bind
+
 	    var unbind = def.unbind
 	    var upda = def.update
 	    var prev
@@ -2161,7 +2168,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    bindParams.push(prev)
 	    bindParams.push(expr)
 	    // ([property-name], expression-value, expression) 
-	    _bind && _bind.apply(d, bindParams)
+	    bind && bind.apply(d, bindParams, expr)
 	    upda && upda.call(d, prev)
 
 	    // watch variable changes of expression
@@ -2173,7 +2180,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        unbind && unbind.call(d)
 	        unwatch && unwatch()
 	        d.$el = null
-	        d.vm = null
+	        d.$vm = null
 	    }
 	})
 
@@ -2182,7 +2189,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
 	    var d = this
-	    var _bind = def.bind
+	    var bind = def.bind
 	    var unbind = def.unbind
 	    var upda = def.update
 	    var isExpr = !!_isExpr(expr)
@@ -2190,10 +2197,10 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    isExpr && (expr = _strip(expr))
 
-	    d.id = _eid ++
-	    d.vm = vm
+	    d.$id = _eid ++
+	    d.$vm = vm
 	    d.$el = tar
-	    d.scope = scope
+	    d.$scope = scope
 
 	    var tagHTML = util.tagHTML(tar)
 	    d.$before = document.createComment(tagHTML[0])
@@ -2253,7 +2260,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    prev = isExpr ? _exec(expr) : expr
 
-	    _bind && _bind.call(d, prev)
+	    bind && bind.call(d, prev, expr)
 	    upda && upda.call(d, prev)
 
 	    if (def.watch !== false && isExpr) {
@@ -2264,8 +2271,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        unbind && unbind.call(d)
 	        unwatch && unwatch()
 	        d.$el = null
-	        d.vm = null
-	        d.scope = null
+	        d.$vm = null
+	        d.$scope = null
 	    }
 	})
 
@@ -2273,20 +2280,23 @@ return /******/ (function(modules) { // webpackBootstrap
 	compiler.Text = compiler.inherit(function(vm, scope, tar) {
 
 	    function _exec (expr) {
-	        return _execute(vm, scope, expr)
+	        return _execute(vm, scope, expr, null)
 	    }
-	    var v = tar.nodeValue
-	        .replace(/\\{/g, '\uFFF0')
-	        .replace(/\\}/g, '\uFFF1')
+	    var originExpr = tar.nodeValue
+	    var v = originExpr.replace(/\\{/g, '\uFFF0')
+	                      .replace(/\\}/g, '\uFFF1')
 
 	    var exprReg = /\{[\s\S]*?\}/g
 	    var parts = v.split(exprReg)
 
 	    var exprs = v.match(exprReg)
-	        // expression not match
+	    // expression not match
 	    if (!exprs || !exprs.length) return
 
 	    var cache = new Array(exprs.length)
+	    var isUnescape = exprs.some(function (expr) {
+	        return _isUnescape(expr)
+	    })
 	    var unwatches = []
 
 	    exprs.forEach(function(exp, index) {
@@ -2303,11 +2313,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	                render()
 	            }
 	        }
-	        unwatches.push(_watch(vm, vars, _update))
 	        // initial value
 	        cache[index] = _exec(exp)
+
+	        unwatches.push(_watch(vm, vars, _update))
 	    })
 
+	    if (isUnescape) {
+	        var $tmp = document.createElement('div')
+	        var $con = document.createDocumentFragment()
+	        var $before = document.createComment(originExpr)
+	        var $after = document.createComment('end')
+
+	        tar.parentNode.insertBefore($before, tar)
+	        tar.parentNode.insertBefore($after, tar.nextSibling)
+	    }
 	    function render() {
 	        var frags = []
 	        parts.forEach(function(item, index) {
@@ -2316,9 +2336,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	                frags.push(cache[index])
 	            }
 	        })
-	        tar.nodeValue = frags.join('')
-	            .replace(/\uFFF0/g, '\\{')
-	            .replace(/\uFFF1/g, '\\}')
+
+	        var nodeV = frags.join('')
+	                         .replace(/\uFFF0/g, '\\{')
+	                         .replace(/\uFFF1/g, '\\}')
+
+	        if (isUnescape) {
+	            var cursor = $before.nextSibling
+	            while(cursor && cursor !== $after) {
+	                var next = cursor.nextSibling
+	                cursor.parentNode.removeChild(cursor)
+	                cursor = next
+	            }
+	            $tmp.innerHTML = nodeV
+	            ;[].slice.call($tmp.childNodes).forEach(function (n) {
+	                $con.appendChild(n)
+	            }) 
+	            $after.parentNode.insertBefore($con, $after)
+	        } else {
+	            tar.nodeValue = nodeV
+	        }
 	    }
 	    /**
 	     *  initial render
@@ -2343,11 +2380,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var unwatches = []
 
 	    function _exec(expr) {
-	        return _execute(vm, scope, expr)
+	        return _execute(vm, scope, expr, name + '=' + value)
 	    }
 	    function _validName (n) {
 	        if (n.match(' ')) {
-	            console.warn('Attribute-name can not contains any white space.')
+	            console.warn('Attribute name can not contains any white space. {' + name + '}')
 	        }
 	        return n
 	    }
@@ -2365,7 +2402,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        unwatches.push(_watch(vm, _extractVars(name), function() {
 	            var next = _exec(nexpr)
 	            if (util.diff(next, preName)) {
-	                $(tar).removeAttr(preName).attr(_validName(next), preValue)
+	                $(tar).removeAttr(preName)
+	                      .attr(util.escape(_validName(next)), 
+	                            util.escape(preValue))
 	                preValue = next
 	            }
 	        }))
@@ -2377,7 +2416,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	        unwatches.push(_watch(vm, _extractVars(value), function() {
 	            var next = _exec(vexpr)
 	            if (util.diff(next, preValue)) {
-	                $(tar).attr(preName, next)
+	                $(tar).attr(
+	                        util.escape(preName), 
+	                        util.escape(next))
+
 	                preValue = next
 	            }
 	        }))
@@ -2395,7 +2437,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 8 */
+/* 7 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -2405,7 +2447,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	'use strict';
 
 	var $ = __webpack_require__(2)
-	var conf = __webpack_require__(6)
+	var conf = __webpack_require__(8)
 	var util = __webpack_require__(5)
 	var _relative = util.relative
 
@@ -2435,6 +2477,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	                else $el.removeClass(this.className)
 	            }
 	        },
+	        'html': {
+	            update: function (nextHTML) {
+	                this.$el.innerHTML = nextHTML
+	            }
+	        },
 	        'model': {
 	            bind: function (prop) {
 	                var tagName = this.$el.tagName
@@ -2455,11 +2502,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        this.evtType = 'input'
 	                        break
 	                    default:
-	                        console.warn(conf.namespace + 'model only using with input/textarea/select/contenteditable')
+	                        console.warn('"' + conf.namespace + 'model" only support input,textarea,select,contenteditable')
 	                        return
 	                }
 
-	                var vm = this.vm
+	                var vm = this.$vm
 	                var that = this
 
 	                function _updateDOM() {
@@ -2493,11 +2540,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	                $(this.$el).on(this.evtType, this._requestChange)
 
 	                _updateDOM()
-	                this.vm.$data.$watch(this._update)
+	                this.$vm.$data.$watch(this._update)
 	            },
 	            unbind: function () {
 	                $(this.$el).off(this.evtType, this._requestChange)
-	                this.vm.$data.$unwatch(this._update)
+	                this.$vm.$data.$unwatch(this._update)
 	            }
 	        },
 	        'on': {
@@ -2507,7 +2554,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	                var fn = handler
 	                if (util.type(fn) !== 'function') 
 	                    return console.warn('"' + conf.namespace + 'on" only accept function. {' + expression + '}')
-	                this.fn = fn.bind(this.vm)
+
+	                this.fn = fn.bind(this.$vm)
 	                this.type = evtType
 	                this.$el.addEventListener(evtType, this.fn, false)
 	            },
@@ -2537,6 +2585,23 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
+/* 8 */
+/***/ function(module, exports, __webpack_require__) {
+
+	'use strict';
+
+	var _ns = 'z-'
+
+	module.exports = {
+	    set namespace (n) {
+	        _ns = n + '-'
+	    },
+	    get namespace () {
+	        return _ns
+	    }
+	 }
+
+/***/ },
 /* 9 */
 /***/ function(module, exports, __webpack_require__) {
 
@@ -2547,7 +2612,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	'use strict';
 
 	var $ = __webpack_require__(2)
-	var conf = __webpack_require__(6)
+	var conf = __webpack_require__(8)
 	var util = __webpack_require__(5)
 
 	module.exports = function(Zect) {
@@ -2596,22 +2661,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    this._mount()
 	                } else {
 	                    this.compiled = true
-	                    this.vm.$compile(this._tmpCon)
+	                    this.$vm.$compile(this._tmpCon)
 	                    this._mount()
 	                }
 	            }
 	        },
 	        'repeat': {
-	            bind: function(/*items, expr*/) {
+	            bind: function(items, expr) {
 	                this.child = this.$el.firstElementChild
-
+	                this.expr = expr
 	                if (!this.child) {
-	                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node')
+	                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node. {' + expr + '}')
 	                }
 	            },
 	            update: function(items) {
 	                if (!items || !items.forEach) {
-	                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data')
+	                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
 	                }
 	                var that = this
 	                function createSubVM(item, index) {
@@ -2621,9 +2686,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    data.$index = index
 	                    data.$value = item
 
-	                    var cvm = that.vm.$compile(subEl, {
+	                    var cvm = that.$vm.$compile(subEl, {
 	                        data: data,
-	                        $parent: that.scope || {}
+	                        $parent: that.$scope || {}
 	                    })
 	                    return {
 	                        $index: index,
@@ -2697,7 +2762,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	/**
 	 *  Calc expression value
 	 */
-	function _execute($vm, $scope/*, expression, _label*/) {
+	function _execute($vm, $scope/*, expression, [label], [target]*/) {
 	    var $parent = $scope && $scope.$parent ? util.extend({}, $scope.$parent.methods, $scope.$parent.data) : {}
 	    
 	    $scope = $scope || {}
@@ -2706,14 +2771,19 @@ return /******/ (function(modules) { // webpackBootstrap
 	    try {
 	        return util.immutable(eval('with($scope){(%s)}'.replace('%s', arguments[2])))
 	    } catch (e) {
+	        var expr = '. {' + arguments[2] + '}'
+	        var label = arguments[3]
+	        var target = arguments[4]
 	        switch (e.name) {
 	            case 'ReferenceError':
-	                console.warn(e.message)
+	                console.warn(e.message + expr)
 	                break
 	            default:
 	                console.error(
-	                    (arguments[3] ? '"' + arguments[3] + '": ' : '') + 
-	                    '{%s}: "%s"'.replace('%s', arguments[2]).replace('%s', e.message)
+	                     (label ? '\'' + label + '\': ' : ''),
+	                    e.message +
+	                    expr,
+	                    target || ''
 	                )
 	        }
 	        return ''

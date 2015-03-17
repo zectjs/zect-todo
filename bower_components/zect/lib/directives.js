@@ -35,6 +35,11 @@ module.exports = function(Zect) {
                 else $el.removeClass(this.className)
             }
         },
+        'html': {
+            update: function (nextHTML) {
+                this.$el.innerHTML = nextHTML
+            }
+        },
         'model': {
             bind: function (prop) {
                 var tagName = this.$el.tagName
@@ -55,11 +60,11 @@ module.exports = function(Zect) {
                         this.evtType = 'input'
                         break
                     default:
-                        console.warn(conf.namespace + 'model only using with input/textarea/select/contenteditable')
+                        console.warn('"' + conf.namespace + 'model" only support input,textarea,select,contenteditable')
                         return
                 }
 
-                var vm = this.vm
+                var vm = this.$vm
                 var that = this
 
                 function _updateDOM() {
@@ -93,11 +98,11 @@ module.exports = function(Zect) {
                 $(this.$el).on(this.evtType, this._requestChange)
 
                 _updateDOM()
-                this.vm.$data.$watch(this._update)
+                this.$vm.$data.$watch(this._update)
             },
             unbind: function () {
                 $(this.$el).off(this.evtType, this._requestChange)
-                this.vm.$data.$unwatch(this._update)
+                this.$vm.$data.$unwatch(this._update)
             }
         },
         'on': {
@@ -107,7 +112,8 @@ module.exports = function(Zect) {
                 var fn = handler
                 if (util.type(fn) !== 'function') 
                     return console.warn('"' + conf.namespace + 'on" only accept function. {' + expression + '}')
-                this.fn = fn.bind(this.vm)
+
+                this.fn = fn.bind(this.$vm)
                 this.type = evtType
                 this.$el.addEventListener(evtType, this.fn, false)
             },
