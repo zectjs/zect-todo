@@ -30,12 +30,12 @@ function noop () {}
  *  @return <Function> unwatch
  */
 function _watch(vm, vars, update) {
+    function _handler (kp) {
+        vars.forEach(function(key, index) {
+            if (_relative(kp, key)) update.call(null, key, index)
+        })
+    }
     if (vars && vars.length) {
-        function _handler (kp) {
-            vars.forEach(function(key, index) {
-                if (_relative(kp, key)) update.call(null, key, index)
-            })
-        }
         vm.$watch(_handler)
         return function () {
             vm.$unwatch(_handler)
@@ -45,7 +45,13 @@ function _watch(vm, vars, update) {
 }
 
 function _strip(t) {
-    return t.trim().match(/^\{([\s\S]*)\}$/m)[1]
+    return t.trim()
+            .match(/^\{([\s\S]*)\}$/m)[1]
+            .replace(/^- /, '')
+}
+
+function _isUnescape(t) {
+    return t.match(/^\{\- /)
 }
 
 /**
@@ -123,10 +129,11 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     }
 
     d.$el = tar
-    d.vm = vm
-    d.id = _did++
+    d.$vm = vm
+    d.$id = _did++
 
-    var _bind = def.bind
+    var bind = def.bind
+
     var unbind = def.unbind
     var upda = def.update
     var prev
@@ -156,7 +163,7 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     bindParams.push(prev)
     bindParams.push(expr)
     // ([property-name], expression-value, expression) 
-    _bind && _bind.apply(d, bindParams)
+    bind && bind.apply(d, bindParams, expr)
     upda && upda.call(d, prev)
 
     // watch variable changes of expression
@@ -168,7 +175,7 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
         unbind && unbind.call(d)
         unwatch && unwatch()
         d.$el = null
-        d.vm = null
+        d.$vm = null
     }
 })
 
@@ -177,7 +184,7 @@ var _eid = 0
 compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
     var d = this
-    var _bind = def.bind
+    var bind = def.bind
     var unbind = def.unbind
     var upda = def.update
     var isExpr = !!_isExpr(expr)
@@ -185,10 +192,10 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
     isExpr && (expr = _strip(expr))
 
-    d.id = _eid ++
-    d.vm = vm
+    d.$id = _eid ++
+    d.$vm = vm
     d.$el = tar
-    d.scope = scope
+    d.$scope = scope
 
     var tagHTML = util.tagHTML(tar)
     d.$before = document.createComment(tagHTML[0])
@@ -248,7 +255,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 
     prev = isExpr ? _exec(expr) : expr
 
-    _bind && _bind.call(d, prev)
+    bind && bind.call(d, prev, expr)
     upda && upda.call(d, prev)
 
     if (def.watch !== false && isExpr) {
@@ -259,8 +266,8 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
         unbind && unbind.call(d)
         unwatch && unwatch()
         d.$el = null
-        d.vm = null
-        d.scope = null
+        d.$vm = null
+        d.$scope = null
     }
 })
 
@@ -268,20 +275,23 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
 compiler.Text = compiler.inherit(function(vm, scope, tar) {
 
     function _exec (expr) {
-        return _execute(vm, scope, expr)
+        return _execute(vm, scope, expr, null)
     }
-    var v = tar.nodeValue
-        .replace(/\\{/g, '\uFFF0')
-        .replace(/\\}/g, '\uFFF1')
+    var originExpr = tar.nodeValue
+    var v = originExpr.replace(/\\{/g, '\uFFF0')
+                      .replace(/\\}/g, '\uFFF1')
 
     var exprReg = /\{[\s\S]*?\}/g
     var parts = v.split(exprReg)
 
     var exprs = v.match(exprReg)
-        // expression not match
+    // expression not match
     if (!exprs || !exprs.length) return
 
     var cache = new Array(exprs.length)
+    var isUnescape = exprs.some(function (expr) {
+        return _isUnescape(expr)
+    })
     var unwatches = []
 
     exprs.forEach(function(exp, index) {
@@ -298,11 +308,21 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
                 render()
             }
         }
-        unwatches.push(_watch(vm, vars, _update))
         // initial value
         cache[index] = _exec(exp)
+
+        unwatches.push(_watch(vm, vars, _update))
     })
 
+    if (isUnescape) {
+        var $tmp = document.createElement('div')
+        var $con = document.createDocumentFragment()
+        var $before = document.createComment(originExpr)
+        var $after = document.createComment('end')
+
+        tar.parentNode.insertBefore($before, tar)
+        tar.parentNode.insertBefore($after, tar.nextSibling)
+    }
     function render() {
         var frags = []
         parts.forEach(function(item, index) {
@@ -311,9 +331,26 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
                 frags.push(cache[index])
             }
         })
-        tar.nodeValue = frags.join('')
-            .replace(/\uFFF0/g, '\\{')
-            .replace(/\uFFF1/g, '\\}')
+
+        var nodeV = frags.join('')
+                         .replace(/\uFFF0/g, '\\{')
+                         .replace(/\uFFF1/g, '\\}')
+
+        if (isUnescape) {
+            var cursor = $before.nextSibling
+            while(cursor && cursor !== $after) {
+                var next = cursor.nextSibling
+                cursor.parentNode.removeChild(cursor)
+                cursor = next
+            }
+            $tmp.innerHTML = nodeV
+            ;[].slice.call($tmp.childNodes).forEach(function (n) {
+                $con.appendChild(n)
+            }) 
+            $after.parentNode.insertBefore($con, $after)
+        } else {
+            tar.nodeValue = nodeV
+        }
     }
     /**
      *  initial render
@@ -338,11 +375,11 @@ compiler.Attribute = function(vm, scope, tar, name, value) {
     var unwatches = []
 
     function _exec(expr) {
-        return _execute(vm, scope, expr)
+        return _execute(vm, scope, expr, name + '=' + value)
     }
     function _validName (n) {
         if (n.match(' ')) {
-            console.warn('Attribute-name can not contains any white space.')
+            console.warn('Attribute name can not contains any white space. {' + name + '}')
         }
         return n
     }
@@ -360,7 +397,9 @@ compiler.Attribute = function(vm, scope, tar, name, value) {
         unwatches.push(_watch(vm, _extractVars(name), function() {
             var next = _exec(nexpr)
             if (util.diff(next, preName)) {
-                $(tar).removeAttr(preName).attr(_validName(next), preValue)
+                $(tar).removeAttr(preName)
+                      .attr(util.escape(_validName(next)), 
+                            util.escape(preValue))
                 preValue = next
             }
         }))
@@ -372,7 +411,10 @@ compiler.Attribute = function(vm, scope, tar, name, value) {
         unwatches.push(_watch(vm, _extractVars(value), function() {
             var next = _exec(vexpr)
             if (util.diff(next, preValue)) {
-                $(tar).attr(preName, next)
+                $(tar).attr(
+                        util.escape(preName), 
+                        util.escape(next))
+
                 preValue = next
             }
         }))

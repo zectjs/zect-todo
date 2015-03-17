@@ -9,7 +9,6 @@
 		// the root element that will be compiled
 		el: '#todoapp',
 
-
 		// app state data
 		data: {
 			todos: todoStorage.fetch(),
@@ -54,16 +53,11 @@
 				}
 			}
 		},
-
-		// // a custom filter that filters the displayed todos array
-		// filters: {
-			
-		// },
-
 		// computed properties
 		// http://vuejs.org/guide/computed.html
 		computed: {
 			remaining: function () {
+				console.log(this.$data.todos.filter(this.$data.filters.active).length)
 				return this.$data.todos.filter(this.$data.filters.active).length;
 			},
 			allDone: {
@@ -77,9 +71,6 @@
 				}
 			}
 		},
-
-		// methods that implement data logic.
-		// note there's no DOM manipulation here at all.
 		methods: {
 			// filter
 			filterTodos: function () {
@@ -104,10 +95,12 @@
 			},
 
 			removeTodo: function (todo) {
-				this.$data.todos.$remove(todo.$data);
+				var index = e.currentTarget.dataset.index
+				this.$data.todos.splice(index, 1)
 			},
 
 			editTodo: function (todo) {
+				console.log('dbclick')
 				this.beforeEditCache = todo.title;
 				this.$data.editedTodo = todo;
 			},
