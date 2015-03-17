@@ -51,7 +51,7 @@ function _strip(t) {
 }
 
 function _isUnescape(t) {
-    return t.match(/^\{\- /)
+    return !!t.match(/^\{\- /)
 }
 
 /**
@@ -195,7 +195,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
     d.$id = _eid ++
     d.$vm = vm
     d.$el = tar
-    d.$scope = scope
+    d.$scope = scope // save the scope reference
 
     var tagHTML = util.tagHTML(tar)
     d.$before = document.createComment(tagHTML[0])
@@ -317,8 +317,8 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
     if (isUnescape) {
         var $tmp = document.createElement('div')
         var $con = document.createDocumentFragment()
-        var $before = document.createComment(originExpr)
-        var $after = document.createComment('end')
+        var $before = document.createComment('{' + _strip(originExpr))
+        var $after = document.createComment('}')
 
         tar.parentNode.insertBefore($before, tar)
         tar.parentNode.insertBefore($after, tar.nextSibling)
@@ -366,40 +366,37 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
 
 compiler.Attribute = function(vm, scope, tar, name, value) {
     
-    var _isNameExpr = _isExpr(name)
-    var _isValueExpr = _isExpr(value)
+    var isNameExpr = _isExpr(name)
+    var isValueExpr = _isExpr(value)
 
-    var nexpr = _isNameExpr ? _strip(name) : null
-    var vexpr = _isValueExpr ? _strip(value) : null
+    var nexpr = isNameExpr ? _strip(name) : null
+    var vexpr = isValueExpr ? _strip(value) : null
 
     var unwatches = []
 
     function _exec(expr) {
         return _execute(vm, scope, expr, name + '=' + value)
     }
-    function _validName (n) {
-        if (n.match(' ')) {
-            console.warn('Attribute name can not contains any white space. {' + name + '}')
-        }
-        return n
-    }
+    // validate atrribute name, from: http://www.w3.org/TR/REC-xml/#NT-NameChar
+    // /^(:|[a-zA-Z0-9]|_|-|[\uC0-\uD6]|[\uD8-\uF6]|[\uF8-\u2FF]|[\u370-\u37D]|[\u37F-\u1FFF]|[\u200C-\u200D]|[\u2070-\u218F]|[\u2C00-\u2FEF]|[\u3001-\uD7FF]|[\uF900-\uFDCF]|[\uFDF0-\uFFFD]|[\u10000-\uEFFFF])+$/
 
     // cache last name/value
-    var preName = _isNameExpr ? _exec(nexpr) : name
-    var preValue = _isValueExpr ? _exec(vexpr) : value
+    var preName = isNameExpr ? _exec(nexpr) : name
+    var preValue = isValueExpr ? _exec(vexpr) : value
 
-    tar.setAttribute(_validName(preName), preValue)
+    tar.setAttribute(preName, preValue)
 
     /**
      *  watch attribute name expression variable changes
      */
-    if (_isNameExpr) {
+    if (isNameExpr) {
         unwatches.push(_watch(vm, _extractVars(name), function() {
             var next = _exec(nexpr)
+
             if (util.diff(next, preName)) {
+
                 $(tar).removeAttr(preName)
-                      .attr(util.escape(_validName(next)), 
-                            util.escape(preValue))
+                      .attr(next, preValue)
                 preValue = next
             }
         }))
@@ -407,14 +404,12 @@ compiler.Attribute = function(vm, scope, tar, name, value) {
     /**
      *  watch attribute value expression variable changes
      */
-    if (_isValueExpr) {
+    if (isValueExpr) {
         unwatches.push(_watch(vm, _extractVars(value), function() {
             var next = _exec(vexpr)
             if (util.diff(next, preValue)) {
-                $(tar).attr(
-                        util.escape(preName), 
-                        util.escape(next))
 
+                $(tar).attr(preName, next)
                 preValue = next
             }
         }))

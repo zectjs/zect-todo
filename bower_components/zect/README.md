@@ -4,6 +4,10 @@ Zect
 Lightweight Web components and MVVM framework.
 **Zect**'s state observer is power by [muxjs](https://github.com/switer/muxjs)
 
+## Example
+
+* Todo MVC: http://xiaokaike.github.io/zect-todo
+
 ## Usage
 - [zect.js](https://raw.githubusercontent.com/switer/zect/master/dist/zect.js)
 - [zect.min.js](https://raw.githubusercontent.com/switer/zect/master/dist/zect.min.js)
@@ -40,20 +44,40 @@ var app = new Zect({
 - Instance Options
     * [el]()
     * [data]()
+    * [mixins]() // TBD
     * [methods]()
     * [template]()
     * [computed]()
     * [directives]()
     * [components]()
 
+- Lifecyle Methods
+    * [created]()
+    * [ready]()
+    * [destroy]()
+
 - Instance Methods
     * [$set]()
     * [$get]()
+    * [$watch]()
+    * [$unwatch]()
+    * [$compile]()
+    * [$component]()
+    * [$destroy]()
+
+- Instance Properties
+    * [$el]()
+    * [$refs]()
+    * [$methods]()
+    * [$children]()
+    * [$destroyed]()
 
 - Template Syntax
     * [if]()
     * [repeat]()
+    * [template]()
     * [{expression}]()
+    * [{- expression}]()
 
 - Direcitves
     * [on]()
@@ -61,18 +85,18 @@ var app = new Zect({
     * [attr]()
     * [class]()
     * [style]()
-    * [component]() // TBD
-
-- Other
-    * [escape for {expression}]() // TBD
-    * [unescape for {- expression}]() // TBD
+    * [component]()
 
 ## Guide
 - **Custom directive**
 
-Options's Methods: `bind`, `update`, `unbind`. `update`, `unbind` is optional. 
-Directive instance property:
-* **$vm** Mounted VM of the directive
+Options's Methods: 
+* **bind**    Call only once when directive is binding.
+* **update**  Call every time when express's value has been changed.
+* **unbind**  Call only once when directive is unbinded.
+
+Directive instance properties:
+* **$vm**   Mounted VM of the directive
 * **$el**   Mounted target Node of the directive
 * **$id**   Current directive instance id
 
@@ -99,7 +123,6 @@ Zect.directive('tap', {
 <div id="con">
     <input type="text" 
         id="con"
-        z-on="{change: onChange}"  
         z-model="search" 
     />
     <input type="submit" z-on="onSubmit" value="submit">
@@ -114,7 +137,7 @@ new Zect({
     },
     methods: {
         onSubmit: function () {
-            this.$data.search // input value
+            this.$data.search // input-value
         }
     }
 })
@@ -175,6 +198,58 @@ Render result:
     <div>{- value}</div>
 </z-repeat>
 
+```
+
+- **Custom Component**
+
+Define a custom component
+
+```html
+<script type="text/zect" id="tpl-header">
+    <z-template class="header">
+        <div class="title">{title}</div>
+    </z-template>
+</script>
+```
+
+```js
+Zect.component('c-header', {
+    template: document.querySelector('#tpl-header').innerHTML,
+    data: {
+        title: 'index'
+    },
+    ready: function () {
+
+    }
+})
+```
+Use component:
+
+```html
+<body>
+    <div id="app">
+        <c-header title="header component"></c-header>
+        <div title="header component2" z-component="c-header"></div>
+    </div>
+    <script>
+        new Zect({
+            el: '#app'
+        })
+    </script>
+</body>
+```
+
+render result:
+
+```html
+<div id="app">
+    <c-header title="header component" class="header">
+        <div class="title">index</div>
+    </c-header>
+    <div title="header component2" class="header">
+        <div class="title">index</div>
+    </div>
+</div>
 ```
 
 ## License
