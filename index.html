@@ -27,7 +27,6 @@
 								<input class="toggle" 
 									type="checkbox" 
 									v-model="{'todos[' + $index + '].completed'}"
-									data-model="{'todos[' + $index + '].completed'}"
 								>
 								<label  v-on="{dblclick: editTodo}" data-index="{$index}">{title}</label>
 								<button class="destroy" data-index="{$index}" v-on="{click: removeTodo}"></button>
