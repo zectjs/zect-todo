@@ -13,7 +13,7 @@
 		data: {
 			todos: todoStorage.fetch(),
 			newTodo: '',
-			editedTodo: null,
+			editedItem: null,
 			activeFilter: 'all',
 			filters: {
 				all: function () {
@@ -31,7 +31,7 @@
 		// ready hook, watch todos change for data persistence
 		ready: function () {
 			this.$watch(function (prop) {
-				if (prop === 'todos') {
+				if (prop.match(/^todos\b/)) {
 					todoStorage.save(this.$data.todos);
 				}
 			}.bind(this));
@@ -46,7 +46,7 @@
 					if (!value) {
 						return;
 					}
-					var el = this.el;
+					var el = this.$el;
 					setTimeout(function () {
 						el.focus();
 					}, 0);
@@ -94,37 +94,44 @@
 				this.$data.newTodo = '';
 			},
 
-			removeTodo: function (todo) {
-				var index = e.currentTarget.dataset.index
-				this.$data.todos.splice(index, 1)
+			removeTodo: function (e) {
+				var index = e.currentTarget.dataset.index;
+				this.$data.todos.splice(index, 1);
 			},
 
-			editTodo: function (todo) {
-				console.log('dbclick')
+			editTodo: function (e) {
+				var index = e.currentTarget.dataset.index;
+				var todo = this.$data.todos[index];
+
 				this.beforeEditCache = todo.title;
-				this.$data.editedTodo = todo;
+				this.$data.editedItem = index;
 			},
 
-			doneEdit: function (todo) {
-				if(e.keyCode === 13){
+			doneEdit: function (e) {
+				if(e.keyCode !== 13){
 					return
 				}
 
-				if (!this.$data.editedTodo) {
+				if (this.$data.editedItem === null) {
 					return;
 				}
-				this.$data.editedTodo = null;
+				var index = e.currentTarget.dataset.index;
+				var todo = this.$data.todos[index];
+
+				this.$data.editedItem = null;
 				todo.title = todo.title.trim();
 				if (!todo.title) {
 					this.removeTodo(todo);
 				}
 			},
 
-			cancelEdit: function (todo) {
-				if(e.keyCode === 27){
+			cancelEdit: function (e) {
+				if(e.keyCode !== 27){
 					return
 				}
-				this.$data.editedTodo = null;
+				var index = e.currentTarget.dataset.index;
+				var todo = this.$data.todos[index];
+				this.$data.editedItem = null;
 				todo.title = this.beforeEditCache;
 			},
 

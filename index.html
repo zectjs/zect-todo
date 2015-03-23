@@ -1,8 +1,8 @@
 <!doctype html>
-<html data-framework="vue">
+<html data-framework="zect">
 	<head>
 		<meta charset="utf-8">
-		<title>Vue.js • TodoMVC</title>
+		<title>Zect • TodoMVC</title>
 		<link rel="stylesheet" href="bower_components/todomvc-common/base.css">
 		<style> [v-cloak] { display: none; } </style>
 	</head>
@@ -16,23 +16,29 @@
 					v-on="{keyup:addTodo}">
 			</header>
 			<section id="main" v-show="{todos.length}" v-cloak>
-				<input id="toggle-all" type="checkbox" v-model="allDone">
+				<input id="toggle-all" type="checkbox" 
+					v-model="allDone"
+				/>
 				<ul id="todo-list">
 					<v-repeat items="{todos}">
 						<li class="todo" data-index="{$index}"
-							v-class="{completed: completed; editing: $value == editedTodo}">
+							v-class="{completed: completed; editing: $index == editedItem}">
 							<div class="view">
-								<input class="toggle" type="checkbox" v-model="{'filterTodos' + $index + 'completed'}">
-								<label  v-on="{dblclick: editTodo}">{title}</label>
+								<input class="toggle" 
+									type="checkbox" 
+									v-model="{'todos[' + $index + '].completed'}"
+								>
+								<label  v-on="{dblclick: editTodo}" data-index="{$index}">{title}</label>
 								<button class="destroy" data-index="{$index}" v-on="{click: removeTodo}"></button>
 							</div>
 							<input class="edit" type="text" 
-								v-model="title" 
-								v-todo-focus="{$value == editedTodo}" 
+								data-index="{$index}"
+								v-model="{'todos[' + $index + '].title'}" 
+								v-todo-focus="{$index == editedItem}" 
 								v-on="{
-										blur: doneEdit.bind($vm);
-										keyup: doneEdit.bind($vm); 
-										keyup: cancelEdit.bind($vm)
+										blur: doneEdit;
+										keyup: doneEdit;
+										keyup: cancelEdit
 									}"
 								>
 						</li>

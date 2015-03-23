@@ -18,7 +18,7 @@ var elements = require('./elements')(Zect)      // preset directives getter
 var allDirectives = [presetDirts, {}]                // [preset, global]
 var gdirs = allDirectives[1]
 var gcomps = {}                                 // global define components
-var componentProps = ['state', 'method', conf.namespace + 'component']
+var componentProps = ['data', 'methods', conf.namespace + 'component']
 
 function funcOrObject(obj, prop) {
     var tar = obj[prop]
@@ -90,6 +90,26 @@ function ViewModel(options) {
         el = document.querySelector(el)
     } else if (!is.Element(el)) {
         throw new Error('Unmatch el option')
+    }
+    // replate template holder DOM
+    if (el.children.length == 1 && el.firstElementChild.tagName.toLowerCase() == (conf.namespace + 'template')) {
+        var $holder = el.firstElementChild
+        var $childrens = [].slice.call($holder.childNodes)
+        var attributes = [].slice.call($holder.attributes)
+
+        el.removeChild($holder)
+        /**
+         *  Migrate childNodes
+         */
+        $childrens.forEach(function (n) {
+            el.appendChild(n)
+        })
+        /**
+         *  Merge attributes
+         */
+        attributes.forEach(function (att) {
+            if (!el.hasAttribute(att.name)) el.setAttribute(att.name, att.value)
+        })
     }
 
     vm.$el = el
@@ -176,11 +196,11 @@ function ViewModel(options) {
         return compiler
     }
 
-    var beforeDestroy = options.beforeDestroy
+    var beforeDestroy = options.destroy
     vm.$destroy = function () {
         beforeDestroy && beforeDestroy.call(vm)
 
-        [_directives, _components, _directives].forEach(function (items) {
+        ;[_directives, _components, _directives].forEach(function (items) {
             items.forEach(function (inst) {
                 inst.$destroy()
             })
@@ -206,7 +226,7 @@ function ViewModel(options) {
         _elements = null
 
         // marked
-        vm.$isDestroy = true
+        vm.$destroyed = true
     }
 
     vm.$compiler = vm.$compile(el)
@@ -328,23 +348,29 @@ function ViewModel(options) {
      *  comment
      */
     function compileComponent (node, parentVM, scope) {
-        var Comp = getComponent(node.tagName)
+        var $node = $(node)
+        var CompName = $node.attr(conf.namespace + 'component') || node.tagName
+        var Comp = getComponent(CompName)
 
         /**
          *  Tag is not a custom element
          */
         if (!Comp) return
 
+        $node.removeAttr(conf.namespace +'component')
+
         // need deep into self
         if (node === parentVM.$el) return
 
         var ref = $(node).attr('ref')
 
-        var binding = $(node).attr('state')
+        var binding = $node.attr('data')
+        $node.removeAttr('data')
         var _isExpr = util.isExpr(binding)
         var bindingData = _isExpr ? Compiler.execute(parentVM, scope, binding) : {}
 
-        var methods = $(node).attr('method')
+        var methods = $node.attr('methods')
+        $node.removeAttr('methods')
         var bindingMethods = util.isExpr(methods) ? Compiler.execute(parentVM, scope, methods) : {}
 
         /**
@@ -386,6 +412,20 @@ function ViewModel(options) {
                 setBindingObj(binding)
             }
         }
+
+        // var props = {}
+        // // migrate attributes
+        // var attributes = [].slice.call(node.attributes)
+        // attributes.forEach(function (att) {
+        //     var atn = att.name
+        //     var atv = att.value
+        //     // camel case
+        //     atn = atn.replace(/-([a-z])/g, function (m, $1) {
+        //         return $1.toUpperCase()
+        //     })
+        //     if (atn == 'class') props['className'] = atv 
+        //     else props[atn] = atv
+        // })
 
         compVM = new Comp({
             el: node,
