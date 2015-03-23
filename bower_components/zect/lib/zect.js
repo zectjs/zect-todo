@@ -18,7 +18,6 @@ var elements = require('./elements')(Zect)      // preset directives getter
 var allDirectives = [presetDirts, {}]                // [preset, global]
 var gdirs = allDirectives[1]
 var gcomps = {}                                 // global define components
-var componentProps = ['data', 'methods', conf.namespace + 'component']
 
 function funcOrObject(obj, prop) {
     var tar = obj[prop]
@@ -28,18 +27,15 @@ function funcOrObject(obj, prop) {
  *  Global API
  */
 function Zect(options) {
-    return ViewModel.call(this, options || {})
+    var insOpt = _mergeMethodMixins([options])
+    return ViewModel.call(this, insOpt)
 }
 Zect.extend = function(options) {
     return function(opt) {
-        var insOpt = {}
-
-        util.extend(insOpt, options, opt)
-
-        ;['data', 'methods', 'directives', 'components'].forEach(function (prop) {
-            insOpt[prop] = {}
-            util.extend(insOpt[prop], funcOrObject(options, prop), funcOrObject(opt, prop))
-        })
+        var insOpt = _mergeMethodMixins([options, opt])
+        /**
+         *  Prototype inherit
+         */
         util.insertProto(this, Zect.prototype)
         return ViewModel.call(this, insOpt)
     }
@@ -75,7 +71,8 @@ function ViewModel(options) {
 
     var _directives = [] // private refs for all directives instance of the vm    
     var _components = [] // private refs for all components    
-    var _elements = [] // private refs for all elments    
+    var NS = conf.namespace
+    var componentProps = [NS + 'component', NS + 'data', NS + 'methods']
 
     /**
      *  Mounted element detect
@@ -92,10 +89,10 @@ function ViewModel(options) {
         throw new Error('Unmatch el option')
     }
     // replate template holder DOM
-    if (el.children.length == 1 && el.firstElementChild.tagName.toLowerCase() == (conf.namespace + 'template')) {
+    if (el.children.length == 1 && el.firstElementChild.tagName.toLowerCase() == (NS + 'template')) {
         var $holder = el.firstElementChild
-        var $childrens = [].slice.call($holder.childNodes)
-        var attributes = [].slice.call($holder.attributes)
+        var $childrens = _slice($holder.childNodes)
+        var attributes = _slice($holder.attributes)
 
         el.removeChild($holder)
         /**
@@ -170,12 +167,13 @@ function ViewModel(options) {
         options.created && options.created()
 
         util.merge(dataOpt, funcOrObject(options, 'data'))
+        
         // Instance observable state model
-
         var mopts = {
             deep: true,
             props: dataOpt,
-            computed: options.computed
+            computed: options.computed,
+            computedContext: vm
         }
         $data = new Mux(mopts)
     }
@@ -186,6 +184,7 @@ function ViewModel(options) {
      */
     vm.$compile = function (el, scope) {
         var compiler
+
         util.walk(el, function (node) {
             var isRoot = node === el
             var result = compile(node, scope, isRoot)
@@ -200,7 +199,7 @@ function ViewModel(options) {
     vm.$destroy = function () {
         beforeDestroy && beforeDestroy.call(vm)
 
-        ;[_directives, _components, _directives].forEach(function (items) {
+        ;[_components, _directives].forEach(function (items) {
             items.forEach(function (inst) {
                 inst.$destroy()
             })
@@ -223,7 +222,6 @@ function ViewModel(options) {
         components = null
         _directives = null
         _components = null
-        _elements = null
 
         // marked
         vm.$destroyed = true
@@ -236,7 +234,9 @@ function ViewModel(options) {
      */
     options.ready && options.ready.call(vm)
 
-    // TODO destroy
+    function setBindings2Scope (scope, ref) {
+        scope && scope.bindings && (scope.bindings.push(ref))
+    }
 
     function compile (node, scope, isRoot) {
         /**
@@ -273,6 +273,8 @@ function ViewModel(options) {
                 break
             case 3:
                 inst = new TextDirective(vm, scope, node)
+                _directives.push(inst)
+                setBindings2Scope(scope, inst)
                 into = false
                 break
             case 11:
@@ -316,13 +318,16 @@ function ViewModel(options) {
                         scope,
                         node, 
                         elements['if'], 
-                        conf.namespace + 'if', 
+                        NS + 'if', 
                         $(node).attr('is')
                 )
                 if (!isRoot) {
                     inst.$mount(node)
                 }
-                _elements.push(inst)
+                // save elements refs
+                _directives.push(inst)
+                // save bindins to scope
+                setBindings2Scope(scope, inst)
                 return inst
             /**
              *  <*-repeat></*-repeat>
@@ -333,13 +338,14 @@ function ViewModel(options) {
                         scope,
                         node, 
                         elements['repeat'],
-                        conf.namespace + 'repeat', 
+                        NS + 'repeat', 
                         $(node).attr('items')
                 )
                 if (!isRoot) {
                     inst.$mount(node)
                 }
-                _elements.push(inst)
+                _directives.push(inst)
+                setBindings2Scope(scope, inst)
                 return inst
         }
     }
@@ -349,7 +355,7 @@ function ViewModel(options) {
      */
     function compileComponent (node, parentVM, scope) {
         var $node = $(node)
-        var CompName = $node.attr(conf.namespace + 'component') || node.tagName
+        var CompName = $node.attr(NS + 'component') || node.tagName
         var Comp = getComponent(CompName)
 
         /**
@@ -357,26 +363,42 @@ function ViewModel(options) {
          */
         if (!Comp) return
 
-        $node.removeAttr(conf.namespace +'component')
+        $node.removeAttr(NS +'component')
 
         // need deep into self
         if (node === parentVM.$el) return
 
         var ref = $(node).attr('ref')
 
-        var binding = $node.attr('data')
-        $node.removeAttr('data')
-        var _isExpr = util.isExpr(binding)
-        var bindingData = _isExpr ? Compiler.execute(parentVM, scope, binding) : {}
+        var dataExpr = $node.attr(NS + 'data')
+        var methods = $node.attr(NS + 'methods')
+        $node.removeAttr(NS + 'data')
+        $node.removeAttr(NS + 'methods')
 
-        var methods = $node.attr('methods')
-        $node.removeAttr('methods')
-        var bindingMethods = util.isExpr(methods) ? Compiler.execute(parentVM, scope, methods) : {}
-
+        var _isDataExpr = util.isExpr(dataExpr)
+        var bindingData
+        var bindingMethods
         /**
          *  Watch
          */
         var sep = ';'
+        var sepRegexp = new RegExp(sep, 'g')
+        var ast = {}
+        var revealAst = {}
+        var compVM
+
+        function _executeBindingMethods () {
+            var methodObjExpr = methods.replace(sepRegexp, ',')
+            return util.isExpr(methods) 
+                    ? Compiler.execute(parentVM, scope, methodObjExpr) 
+                    : {}
+        }
+        function _executeBindingData () {
+            var dataObjExpr = dataExpr.replace(sepRegexp, ',')
+            return util.isExpr(dataExpr) 
+                    ? Compiler.execute(parentVM, scope, dataObjExpr) 
+                    : {}
+        }
         function parseExpr (expr) {
             var name
             var expr = expr.replace(/^[^:]+:/, function (m) {
@@ -397,36 +419,9 @@ function ViewModel(options) {
             })
         }
 
-        var ast = {}
-        var revealAst = {}
-        var compVM
-
-        binding = _isExpr ? Compiler.stripExpr(binding) : ''
-
-        if (binding) {
-            if (binding.match(sep)) {
-                binding.split(sep)
-                       .match(sep)
-                       .map(setBindingObj)
-            } else {
-                setBindingObj(binding)
-            }
-        }
-
-        // var props = {}
-        // // migrate attributes
-        // var attributes = [].slice.call(node.attributes)
-        // attributes.forEach(function (att) {
-        //     var atn = att.name
-        //     var atv = att.value
-        //     // camel case
-        //     atn = atn.replace(/-([a-z])/g, function (m, $1) {
-        //         return $1.toUpperCase()
-        //     })
-        //     if (atn == 'class') props['className'] = atv 
-        //     else props[atn] = atv
-        // })
-
+        var bindingData = _executeBindingData()
+        var bindingMethods = _executeBindingMethods() // --> bindingMethods
+        
         compVM = new Comp({
             el: node,
             data: bindingData,
@@ -434,8 +429,18 @@ function ViewModel(options) {
             $parent: parentVM
         })
 
+        var plainDataExpr = _isDataExpr ? Compiler.stripExpr(dataExpr) : ''
+        if (plainDataExpr) {
+            if (plainDataExpr.match(sep)) {
+                plainDataExpr.replace(new RegExp(sep + '\\s*$'), '') // trim last seperator
+                       .split(sep)
+                       .forEach(setBindingObj)
+            } else {
+                setBindingObj(plainDataExpr)
+            }
+        }
         // watch and binding
-        if (binding) {
+        if (_isDataExpr) {
             parentVM.$data.$watch(function (keyPath, nv) {
                 var nextState
                 util.objEach(revealAst, function (varName, bindingName) {
@@ -451,6 +456,13 @@ function ViewModel(options) {
         ref && (parentVM.$refs[ref] = compVM)
 
         _components.push(compVM)
+        setBindings2Scope(scope, compVM)
+
+        // TBM -- to be modify, instance method show not be attached here
+        compVM.$update = function () {
+            _isDataExpr && compVM.$set(_executeBindingData())
+        }
+
         return compVM
     }
 
@@ -459,7 +471,7 @@ function ViewModel(options) {
      */
     function compileDirective (node, scope) {
         var value = node.nodeValue
-        var attrs = [].slice.call(node.attributes)
+        var attrs = _slice(node.attributes)
         var ast = {
                 attrs: {},
                 dires: {}
@@ -477,7 +489,7 @@ function ViewModel(options) {
             }else if (util.isExpr(aname)) {
                 // variable attribute name
                 ast.attrs[aname] = v
-            } else if (aname.indexOf(conf.namespace) === 0) {
+            } else if (aname.indexOf(NS) === 0) {
                 // directive
                 ast.dires[aname] = v
             } else if (util.isExpr(v.trim())) {
@@ -493,7 +505,9 @@ function ViewModel(options) {
          *  Attributes binding
          */
         util.objEach(ast.attrs, function(name, value) {
-            _directives.push(new AttributeDirective(vm, scope, node, name, value))
+            var attd = new AttributeDirective(vm, scope, node, name, value)
+            _directives.push(attd)
+            setBindings2Scope(scope, attd)
         })
 
         /**
@@ -501,29 +515,79 @@ function ViewModel(options) {
          */
         directives.forEach(function(group) {
             util.objEach(group, function(id, def) {
-                var dname = conf.namespace + id
+                var dname = NS + id
                 var expr = ast.dires[dname]
 
                 if (ast.dires.hasOwnProperty(dname)) {
                     var sep = ';'
+                    var d
                     // multiple defines expression parse
                     if (def.multi && expr.match(sep)) {
                         Compiler.stripExpr(expr)
                                 .split(sep)
                                 .forEach(function(item) {
-                                    _directives.push(
-                                        new Directive(vm, scope, node, def, dname, '{' + item + '}')
-                                    )
+                                    d = new Directive(vm, scope, node, def, dname, '{' + item + '}')
+                                    _directives.push(d)
+                                    setBindings2Scope(scope, d)
                                 })
                     } else {
-                        _directives.push(
-                            new Directive(vm, scope, node, def, dname, expr)
-                        )
+                        d = new Directive(vm, scope, node, def, dname, expr)
+                        _directives.push(d)
+                        setBindings2Scope(scope, d)
                     }
                 }
             })
         })
     }
+}
+
+/**
+ *  Interal functions
+ */
+function _slice (obj) {
+    return [].slice.call(obj)
+}
+function _extend (args) {
+    return util.extend.apply(util, args)
+}
+function _mergeOptions (opts) {
+    var dest = {}
+    _extend([dest].concat(opts))
+    ;['data', 'methods', 'directives', 'components'].forEach(function (prop) {
+        dest[prop] = _extend([{}].concat(opts.map(function (opt) {
+            return funcOrObject(opt, prop)
+        })))
+    })
+    return dest
+}
+function _mergeMethodMixins (optMixins) {
+    var mixins = []
+    /**
+     *  Merge option mixins
+     */
+    optMixins.forEach(function (o) {
+        if (o) {
+            mixins.push(o)
+            o.mixins && (mixins = mixins.concat(o.mixins))
+        }
+    })
+    var insOpt = _mergeOptions(mixins)
+    /**
+     *  Merge method mixins
+     */
+    var m = insOpt.methods = insOpt.methods || {}
+    optMixins.forEach(function (o) {
+        var mxs = o && o.methods && o.methods.mixins
+        if (mxs) {
+            mxs.forEach(function (mx) {
+                util.objEach(mx, function (k, v) {
+                    if (k !== 'mixins') m[k] = v
+                })
+            })
+        }
+    })
+    delete insOpt.methods.mixins
+    return insOpt
 }
 
 module.exports = Zect

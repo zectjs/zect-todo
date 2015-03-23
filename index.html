@@ -21,27 +21,30 @@
 				/>
 				<ul id="todo-list">
 					<v-repeat items="{todos}">
-						<li class="todo" data-index="{$index}"
-							v-class="{completed: completed; editing: $index == editedItem}">
-							<div class="view">
-								<input class="toggle" 
-									type="checkbox" 
-									v-model="{'todos[' + $index + '].completed'}"
-								>
-								<label  v-on="{dblclick: editTodo}" data-index="{$index}">{title}</label>
-								<button class="destroy" data-index="{$index}" v-on="{click: removeTodo}"></button>
-							</div>
-							<input class="edit" type="text" 
-								data-index="{$index}"
-								v-model="{'todos[' + $index + '].title'}" 
-								v-todo-focus="{$index == editedItem}" 
-								v-on="{
-										blur: doneEdit;
-										keyup: doneEdit;
-										keyup: cancelEdit
-									}"
-								>
-						</li>
+						<v-if is="{filters[activeFilter]($value)}">
+							<li class="todo" data-index="{$index}"
+								v-class="{completed: completed; editing: $index == editedItem}"
+							>
+								<div class="view">
+									<input class="toggle" 
+										type="checkbox" 
+										v-model="{'todos[' + $index + '].completed'}"
+									>
+									<label  v-on="{dblclick: editTodo}" data-index="{$index}">{title}</label>
+									<button class="destroy" data-index="{$index}" v-on="{click: removeTodo}"></button>
+								</div>
+								<input class="edit" type="text" 
+									data-index="{$index}"
+									v-model="{'todos[' + $index + '].title'}" 
+									v-todo-focus="{$index == editedItem}" 
+									v-on="{
+											blur: doneEdit;
+											keyup: doneEdit;
+											keyup: cancelEdit
+										}"
+									>
+							</li>
+						</v-if>
 					</v-repeat>
 				</ul>
 			</section>

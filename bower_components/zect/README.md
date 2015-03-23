@@ -44,7 +44,7 @@ var app = new Zect({
 - Instance Options
     * [el]()
     * [data]()
-    * [mixins]() // TBD
+    * [mixins]()
     * [methods]()
     * [template]()
     * [computed]()
@@ -88,7 +88,7 @@ var app = new Zect({
     * [component]()
 
 ## Guide
-- **Custom directive**
+### Custom directive
 
 Options's Methods: 
 * **bind**    Call only once when directive is binding.
@@ -100,7 +100,7 @@ Directive instance properties:
 * **$el**   Mounted target Node of the directive
 * **$id**   Current directive instance id
 
-Example below:
+**Example below:**
 
 ```html
 <div z-tap="{onClick}"></div>
@@ -117,7 +117,7 @@ Zect.directive('tap', {
 })
 ```
 
-- **Two way binding**
+### Two way binding
 
 ```html
 <div id="con">
@@ -143,12 +143,12 @@ new Zect({
 })
 ```
 
--  **Use filter**
+### Use filter
 
 ```html
 <ul id="con">
     <z-repeat items="{lessThanFour(items)}">
-        <li>{- value}</li>
+        <li>{$value}</li>
     </z-repeat>
 </ul>
 ```
@@ -169,7 +169,7 @@ new Zect({
 })
 ```
 
-Render result:
+**Render result:**
 
 ```html
 <ul id="con">
@@ -179,30 +179,34 @@ Render result:
 </ul>
 ```
 
-- **Template syntax**
+### Template syntax
 
+Variables
 ```html
 <!-- escaped HTML value -->
 <p>{title}</p>
 
 <!-- unescaped HTML value -->
-<p>{$ title}</p>
-
+<p>{- title}</p>
+```
+Condition Statement
+```html
 <!-- if -->
 <z-if is="{title}">
     <div>{title}</div>
 </z-if>
-
+```
+Iterator
+```html
 <!-- repeat -->
 <z-repeat items="{items}">
-    <div>{- value}</div>
+    <div data-row="{$index}">{- $value}</div>
 </z-repeat>
-
 ```
 
-- **Custom Component**
+### Custom Component
 
-Define a custom component
+Define a custom component.
 
 ```html
 <script type="text/zect" id="tpl-header">
@@ -223,7 +227,7 @@ Zect.component('c-header', {
     }
 })
 ```
-Use component:
+**Use component:**
 
 ```html
 <body>
@@ -239,7 +243,7 @@ Use component:
 </body>
 ```
 
-render result:
+**render result:**
 
 ```html
 <div id="app">
