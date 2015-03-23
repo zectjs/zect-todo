@@ -31,9 +31,12 @@ function noop () {}
  */
 function _watch(vm, vars, update) {
     function _handler (kp) {
-        vars.forEach(function(key, index) {
-            if (_relative(kp, key)) update.call(null, key, index)
-        })
+        var rel = vars.some(function(key, index) {
+                if (_relative(kp, key)) {
+                    return true
+                }
+            })
+        if (rel) update(kp)
     }
     if (vars && vars.length) {
         vm.$watch(_handler)
@@ -65,47 +68,49 @@ compiler.execute = _execute
 compiler.stripExpr = _strip
 compiler.extractVars = _extractVars
 
+var cproto = compiler.prototype
 compiler.inherit = function (Ctor) {
-    Ctor.prototype.__proto__ = compiler.prototype
+    Ctor.prototype.__proto__ = cproto
     return function Compiler() {
         this.__proto__ = Ctor.prototype
         Ctor.apply(this, arguments)
     }
 }
-compiler.prototype.$bundle = function () {
+cproto.$bundle = function () {
     return this.$el
 }
-compiler.prototype.$floor = function () {
+cproto.$floor = function () {
     return this.$el
 }
-compiler.prototype.$ceil = function () {
+cproto.$ceil = function () {
     return this.$el
 }
-compiler.prototype.$mount = function (pos) {
+cproto.$mount = function (pos) {
     $(pos).replace(this.$bundle())
     return this
 }
-compiler.prototype.$remove = function () {
+cproto.$remove = function () {
     var $el = this.$bundle()
-    $el.parentNode && $($el).remove()
+    _parentNode($el) && $($el).remove()
     return this
 }
-compiler.prototype.$appendTo = function (pos) {
-    $(pos).appendChild(this.$bundle())
+cproto.$appendTo = function (pos) {
+    _appendChild(pos, this.$bundle())
     return this
 }
-compiler.prototype.$insertBefore = function (pos) {
-    pos.parentNode.insertBefore(this.$bundle(), pos)
+cproto.$insertBefore = function (pos) {
+    _insertBefore(_parentNode(pos), this.$bundle(), pos)
     return this
 }
-compiler.prototype.$insertAfter = function (pos) {
-    pos.parentNode.insertBefore(this.$bundle(), pos.nextSibling)
+cproto.$insertAfter = function (pos) {
+    _insertBefore(_parentNode(pos), this.$bundle(), _nextSibling(pos))
     return this
 }
-compiler.prototype.$destroy = function () {
+cproto.$destroy = function () {
     this.$el = null
     return this
 }
+cproto.$update = function () {}
 /**
  *  Standard directive
  */
@@ -131,12 +136,20 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     d.$el = tar
     d.$vm = vm
     d.$id = _did++
+    d.$scope = scope
 
     var bind = def.bind
-
     var unbind = def.unbind
     var upda = def.update
     var prev
+    var unwatch
+
+
+    // set properties
+    util.objEach(def, function (k, v) {
+        d[k] = v
+    })
+    
     /**
      *  execute wrap with directive name
      */
@@ -147,12 +160,12 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     /**
      *  update handler
      */
-    function _update() {
+    function _update(kp) {
         var nexv = _exec(expr)
         if (util.diff(nexv, prev)) {
             var p = prev
             prev = nexv
-            upda && upda.call(d, nexv, p)
+            upda && upda.call(d, nexv, p, kp)
         }
     }
 
@@ -162,104 +175,9 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
     prev = isExpr ? _exec(expr):expr
     bindParams.push(prev)
     bindParams.push(expr)
-    // ([property-name], expression-value, expression) 
-    bind && bind.apply(d, bindParams, expr)
-    upda && upda.call(d, prev)
-
     // watch variable changes of expression
     if (def.watch !== false && isExpr) {
-       var unwatch = _watch(vm, _extractVars(expr), _update)
-    }
-
-    d.$destroy = function () {
-        unbind && unbind.call(d)
-        unwatch && unwatch()
-        d.$el = null
-        d.$vm = null
-    }
-})
-
-
-var _eid = 0
-compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
-
-    var d = this
-    var bind = def.bind
-    var unbind = def.unbind
-    var upda = def.update
-    var isExpr = !!_isExpr(expr)
-    var prev
-
-    isExpr && (expr = _strip(expr))
-
-    d.$id = _eid ++
-    d.$vm = vm
-    d.$el = tar
-    d.$scope = scope // save the scope reference
-
-    var tagHTML = util.tagHTML(tar)
-    d.$before = document.createComment(tagHTML[0])
-    d.$after = document.createComment(tagHTML[1])
-    d.$container = document.createDocumentFragment()
-
-    d.$container.appendChild(d.$before)
-    d.$container.appendChild(d.$after)
-
-    d.$bundle = function () {
-        var $ceil = this.$ceil()
-        var $floor = this.$floor()
-        var $con = this.$container
-        var that = this
-
-        if (!$con.contains($ceil)) {
-            util.domRange($ceil.parentNode, $ceil, $floor)
-                .forEach(function(n) {
-                    that.$container.appendChild(n)
-                })
-            $con.insertBefore($ceil, $con.firstChild)
-            $con.appendChild($floor)
-        }
-        return $con
-    }
-    d.$floor = function () {
-        return this.$after
-    }
-    d.$ceil = function () {
-        return this.$before
-    }
-    d.destroy = function () {
-        this.$container = null
-        this.$before = null
-        this.$after = null
-    }
-
-
-    /**
-     *  execute wrap with directive name
-     */
-    function _exec(expr) {
-        return _execute(vm, scope, expr, name)
-    }
-
-    /**
-     *  update handler
-     */
-    function _update() {
-        var nexv = _exec(expr)
-        if (util.diff(nexv, prev)) {
-            var p = prev
-            prev = nexv
-            upda && upda.call(d, nexv, p)
-        }
-    }
-
-    prev = isExpr ? _exec(expr) : expr
-
-    bind && bind.call(d, prev, expr)
-    upda && upda.call(d, prev)
-
-    if (def.watch !== false && isExpr) {
-        var unwatch = _watch(vm, _extractVars(expr), _update)
+       unwatch = _watch(vm, _extractVars(expr), _update)
     }
 
     d.$destroy = function () {
@@ -269,11 +187,113 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
         d.$vm = null
         d.$scope = null
     }
+    d.$update = _update
+
+    // ([property-name], expression-value, expression) 
+    bind && bind.apply(d, bindParams, expr)
+    upda && upda.call(d, prev)
+
+})
+
+
+var _eid = 0
+compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
+    var d = this
+    var bind = def.bind
+    var unbind = def.unbind
+    var upda = def.update
+    var delta = def.delta
+    var deltaUpdate = def.deltaUpdate
+    var isExpr = !!_isExpr(expr)
+    var prev
+    var unwatch
+
+    isExpr && (expr = _strip(expr))
+
+    d.$id = _eid ++
+    d.$vm = vm
+    d.$el = tar
+    d.$scope = scope // save the scope reference
+
+    var tagHTML = util.tagHTML(tar)
+    d.$before = _createComment(tagHTML[0])
+    d.$after = _createComment(tagHTML[1])
+    d.$container = document.createDocumentFragment()
+
+    _appendChild(d.$container, d.$before)
+    _appendChild(d.$container, d.$after)
+
+    // set properties
+    util.objEach(def, function (k, v) {
+        d[k] = v
+    })
+
+    d.$bundle = function () {
+        var $ceil = this.$ceil()
+        var $floor = this.$floor()
+        var $con = this.$container
+        var that = this
+
+        if (!$con.contains($ceil)) {
+            util.domRange(_parentNode($ceil), $ceil, $floor)
+                .forEach(function(n) {
+                    _appendChild(that.$container, n)
+                })
+            _insertBefore($con, $ceil, $con.firstChild)
+            _appendChild($con, $floor)
+        }
+        return $con
+    }
+    d.$floor = function () {
+        return this.$after
+    }
+    d.$ceil = function () {
+        return this.$before
+    }
+
+    d.$destroy = function () {
+        unbind && unbind.call(d)
+        unwatch && unwatch()
+        d.$el = null
+        d.$vm = null
+        d.$scope = null
+    }
+    /**
+     *  update handler
+     */
+    function _update(kp) {
+        var nexv = _exec(expr)
+        if (delta && delta.call(d, nexv, prev, kp)) {
+            return deltaUpdate && deltaUpdate.call(d, nexv, p, kp)
+        }
+        if (util.diff(nexv, prev)) {
+            var p = prev
+            prev = nexv
+            upda && upda.call(d, nexv, p, kp)
+        }
+    }
+
+    d.$update = _update
+
+    /**
+     *  execute wrap with directive name
+     */
+    function _exec(expr) {
+        return _execute(vm, scope, expr, name)
+    }
+
+    prev = isExpr ? _exec(expr) : expr
+    if (def.watch !== false && isExpr) {
+        unwatch = _watch(vm, _extractVars(expr), _update)
+    }
+
+    bind && bind.call(d, prev, expr)
+    upda && upda.call(d, prev)
+
 })
 
 
 compiler.Text = compiler.inherit(function(vm, scope, tar) {
-
     function _exec (expr) {
         return _execute(vm, scope, expr, null)
     }
@@ -302,6 +322,7 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
         function _update() {
             var pv = cache[index]
             var nv = _exec(exp)
+
             if (util.diff(nv, pv)) {
                 // re-render
                 cache[index] = nv
@@ -317,12 +338,14 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
     if (isUnescape) {
         var $tmp = document.createElement('div')
         var $con = document.createDocumentFragment()
-        var $before = document.createComment('{' + _strip(originExpr))
-        var $after = document.createComment('}')
+        var $before = _createComment('{' + _strip(originExpr))
+        var $after = _createComment('}')
 
-        tar.parentNode.insertBefore($before, tar)
-        tar.parentNode.insertBefore($after, tar.nextSibling)
+        var pn = _parentNode(tar)
+        _insertBefore(pn, $before, tar)
+        _insertBefore(pn, $after, _nextSibling(tar))
     }
+
     function render() {
         var frags = []
         parts.forEach(function(item, index) {
@@ -337,31 +360,47 @@ compiler.Text = compiler.inherit(function(vm, scope, tar) {
                          .replace(/\uFFF1/g, '\\}')
 
         if (isUnescape) {
-            var cursor = $before.nextSibling
+            var cursor = _nextSibling($before)
             while(cursor && cursor !== $after) {
-                var next = cursor.nextSibling
-                cursor.parentNode.removeChild(cursor)
+                var next = _nextSibling(cursor)
+                _parentNode(cursor).removeChild(cursor)
                 cursor = next
             }
             $tmp.innerHTML = nodeV
             ;[].slice.call($tmp.childNodes).forEach(function (n) {
-                $con.appendChild(n)
+                _appendChild($con, n)
             }) 
-            $after.parentNode.insertBefore($con, $after)
+            _insertBefore(_parentNode($after), $con, $after)
         } else {
             tar.nodeValue = nodeV
         }
     }
-    /**
-     *  initial render
-     */
-    render()
 
     this.$destroy = function () {
         unwatches.forEach(function (f) {
             f()
         })
     }
+
+    this.$update = function () {
+        var hasDiff
+        exprs.forEach(function(exp, index) {
+            exp = _strip(exp)
+            var pv = cache[index]
+            var nv = _exec(exp)
+
+            if (!hasDiff && util.diff(nv, pv)) {
+                hasDiff = true
+            }
+            cache[index] = nv
+        })
+        hasDiff && render()
+    }
+
+    /**
+     *  initial render
+     */
+    render()
 })
 
 compiler.Attribute = function(vm, scope, tar, name, value) {
@@ -386,40 +425,63 @@ compiler.Attribute = function(vm, scope, tar, name, value) {
 
     tar.setAttribute(preName, preValue)
 
-    /**
-     *  watch attribute name expression variable changes
-     */
-    if (isNameExpr) {
-        unwatches.push(_watch(vm, _extractVars(name), function() {
-            var next = _exec(nexpr)
+    function _updateName() {
+        var next = _exec(nexpr)
 
-            if (util.diff(next, preName)) {
-
-                $(tar).removeAttr(preName)
-                      .attr(next, preValue)
-                preValue = next
-            }
-        }))
+        if (util.diff(next, preName)) {
+            $(tar).removeAttr(preName)
+                  .attr(next, preValue)
+            preValue = next
+        }
     }
-    /**
-     *  watch attribute value expression variable changes
-     */
-    if (isValueExpr) {
-        unwatches.push(_watch(vm, _extractVars(value), function() {
-            var next = _exec(vexpr)
-            if (util.diff(next, preValue)) {
-
-                $(tar).attr(preName, next)
-                preValue = next
-            }
-        }))
+    function _updateValue() {
+        var next = _exec(vexpr)
+        if (util.diff(next, preValue)) {
+            $(tar).attr(preName, next)
+            preValue = next
+        }
     }
+
 
     this.$destroy = function () {
         unwatches.forEach(function (f) {
             f()
         })
     }
+
+    this.$update = function () {
+        isNameExpr && _updateName()
+        isValueExpr && _updateValue()
+    }
+    /**
+     *  watch attribute name expression variable changes
+     */
+    if (isNameExpr) {
+        unwatches.push(_watch(vm, _extractVars(name), _updateName))
+    }
+    /**
+     *  watch attribute value expression variable changes
+     */
+    if (isValueExpr) {
+        unwatches.push(_watch(vm, _extractVars(value), _updateValue))
+    }
+
+}
+
+function _appendChild (con, child) {
+    return con.appendChild(child)
+}
+function _createComment (ns) {
+    return document.createComment(ns)
+}
+function _insertBefore (con, child, pos) {
+    return con.insertBefore(child, pos)
+}
+function _parentNode (tar) {
+    return tar.parentNode
+}
+function _nextSibling (tar) {
+    return tar.nextSibling
 }
 
 

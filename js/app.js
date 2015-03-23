@@ -4,6 +4,8 @@
 
 	'use strict';
 	Zect.namespace('v')
+
+	var _todoId = 1
 	exports.app = new Zect({
 
 		// the root element that will be compiled
@@ -35,6 +37,14 @@
 					todoStorage.save(this.$data.todos);
 				}
 			}.bind(this));
+
+			var that = this
+			function setActiveFilter () {
+				that.$data.activeFilter = that.getActiveFilter()
+			}
+			window.addEventListener('hashchange', setActiveFilter)
+			setActiveFilter()
+
 		},
 
 		// a custom directive to wait for the DOM to be updated
@@ -56,13 +66,16 @@
 		// computed properties
 		// http://vuejs.org/guide/computed.html
 		computed: {
-			remaining: function () {
-				console.log(this.$data.todos.filter(this.$data.filters.active).length)
-				return this.$data.todos.filter(this.$data.filters.active).length;
+			remaining: {
+				deps: ['todos'],
+				get: function () {
+					return this.$data.todos.filter(this.$data.filters.active).length;
+				}
 			},
 			allDone: {
+				deps: ['remaining'],
 				get: function () {
-					return this.remaining === 0;
+					return this.$data.remaining === 0;
 				},
 				set: function (value) {
 					this.$data.todos.forEach(function (todo) {
@@ -72,6 +85,9 @@
 			}
 		},
 		methods: {
+			getActiveFilter: function () {
+				return location.hash.replace(/^#\/*/, '') || 'all'
+			},
 			// filter
 			filterTodos: function () {
 				return this.$data.todos.filter(
@@ -90,13 +106,14 @@
 				if (!value) {
 					return;
 				}
-				this.$data.todos.push({ title: value, completed: false });
+				this.$data.todos.push({ title: value, completed: false , id: _todoId ++ });
 				this.$data.newTodo = '';
 			},
 
 			removeTodo: function (e) {
 				var index = e.currentTarget.dataset.index;
 				this.$data.todos.splice(index, 1);
+				console.log(this.$data.todos.length)
 			},
 
 			editTodo: function (e) {
@@ -136,7 +153,7 @@
 			},
 
 			removeCompleted: function () {
-				this.$data.todos = this.$data.todos.filter(this.filters.active);
+				this.$data.todos = this.$data.todos.filter(this.$data.filters.active);
 			}
 		}
 	});
