@@ -28,13 +28,15 @@
 								<div class="view">
 									<input class="toggle" 
 										type="checkbox" 
-										
+										v-model="{'todos[' + $index + '].completed'}"
 									>
 									<label  v-on="{dblclick: editTodo}" data-index="{$index}">{title}</label>
 									<button class="destroy" data-index="{$index}" v-on="{click: removeTodo}"></button>
 								</div>
 								<input class="edit" type="text" 
 									data-index="{$index}"
+									v-model="{'todos[' + $index + '].title'}" 
+									v-todo-focus="{$index == editedItem}" 
 									v-on="{
 											blur: doneEdit;
 											keyup: doneEdit;
