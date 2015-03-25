@@ -106,14 +106,15 @@
 				if (!value) {
 					return;
 				}
+				console.time('add')
 				this.$data.todos.push({ title: value, completed: false , id: _todoId ++ });
+				console.timeEnd('add')
 				this.$data.newTodo = '';
 			},
 
 			removeTodo: function (e) {
 				var index = e.currentTarget.dataset.index;
 				this.$data.todos.splice(index, 1);
-				console.log(this.$data.todos.length)
 			},
 
 			editTodo: function (e) {

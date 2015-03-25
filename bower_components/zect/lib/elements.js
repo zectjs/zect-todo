@@ -86,7 +86,6 @@ module.exports = function(Zect) {
                         this.$scope.children.push($scope)
                     }
                     this.$vm.$compile(this._tmpCon, $scope)
-
                     this._mount()
                 }
             }
@@ -129,7 +128,6 @@ module.exports = function(Zect) {
                 if (!items || !items.forEach) {
                     return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
                 }
-
                 var that = this
                 function createSubVM(item, index) {
                     var subEl = that.child.cloneNode(true)
@@ -165,7 +163,6 @@ module.exports = function(Zect) {
                         $scope: $scope
                     }
                 }
-
                 /**
                  *  vms diff
                  */
@@ -173,7 +170,6 @@ module.exports = function(Zect) {
                 var olds = this.last ? util.copyArray(this.last) : olds
                 var oldVms = this.$vms ? util.copyArray(this.$vms) : oldVms
                 var updateVms = []
-
                 items.forEach(function(item, index) {
                     var v
                     if (!olds) {
@@ -188,6 +184,7 @@ module.exports = function(Zect) {
                                 return true
                             }
                         })
+
                         if (~i) {
                             // reused
                             v = oldVms[i]
@@ -210,7 +207,7 @@ module.exports = function(Zect) {
                     }
                     vms[index] = v
                 })
-
+                
                 this.$vms = vms
                 this.last = util.copyArray(items)
 

@@ -15,12 +15,13 @@ module.exports = function(Zect) {
             multi: true,
             bind: function(attname) {
                 this.attname = attname
+                this._$el = $(this.$el)
             },
             update: function(next) {
                 if (!next && next !== '') {
-                    $(this.$el).removeAttr(this.attname)
+                    this._$el.removeAttr(this.attname)
                 } else {
-                    $(this.$el).attr(this.attname, next)
+                    this._$el.attr(this.attname, next)
                 }
             }
         },
@@ -28,11 +29,11 @@ module.exports = function(Zect) {
             multi: true,
             bind: function(className) {
                 this.className = className
+                this._$el = $(this.$el)
             },
             update: function(next) {
-                var $el = $(this.$el)
-                if (next) $el.addClass(this.className)
-                else $el.removeClass(this.className)
+                if (next) this._$el.addClass(this.className)
+                else this._$el.removeClass(this.className)
             }
         },
         'html': {
@@ -42,12 +43,11 @@ module.exports = function(Zect) {
         },
         'model': {
             bind: function (prop) {
-                console.log(prop)
                 var tagName = this.$el.tagName
                 var type = tagName.toLowerCase()
-
+                var $el = this._$el = $(this.$el)
                 // pick input element type spec
-                type = type == 'input' ? $(this.$el).attr('type') || 'text' : type
+                type = type == 'input' ? $el.attr('type') || 'text' : type
 
                 switch (type) {
                     case 'tel':
@@ -78,10 +78,11 @@ module.exports = function(Zect) {
                 }
 
                 var vm = this.$vm
+                var CHECKBOX = 'checkbox'
                 var that = this
 
                 function _updateDOM() {
-                    if (type == 'checkbox') {
+                    if (type == CHECKBOX) {
                         that.$el.checked = vm.$get(prop)
                     } else {
                         that.$el.value = vm.$get(prop)
@@ -89,7 +90,7 @@ module.exports = function(Zect) {
                 }
 
                 function _updateState() {
-                    if (type == 'checkbox') {
+                    if (type == CHECKBOX) {
                         vm.$set(prop, that.$el.checked)
                     } else {
                         vm.$set(prop, that.$el.value)
@@ -103,20 +104,18 @@ module.exports = function(Zect) {
                  *  State 2 DOM input
                  */
                 this._update = function (kp) {
-                    console.log('kp is: ', kp, prop, _relative(kp, prop))
                     if (_relative(kp, prop)) {
                         _updateDOM()
                     }
                 }
-
-                $(this.$el).on(this.evtType, this._requestChange)
+                $el.on(this.evtType, this._requestChange)
 
                 _updateDOM()
-                this.$vm.$data.$watch(this._update)
+                this.$vm.$watch(this._update)
             },
             unbind: function () {
-                $(this.$el).off(this.evtType, this._requestChange)
-                this.$vm.$data.$unwatch(this._update)
+                this._$el.off(this.evtType, this._requestChange)
+                this.$vm.$unwatch(this._update)
             }
         },
         'on': {
@@ -129,11 +128,11 @@ module.exports = function(Zect) {
 
                 this.fn = fn.bind(this.$vm)
                 this.type = evtType
-                this.$el.addEventListener(evtType, this.fn, false)
+                $(this.$el).on(evtType, this.fn, false)
             },
             unbind: function() {
                 if (this.fn) {
-                    this.$el.removeEventListener(this.type, this.fn)
+                    $(this.$el).off(this.type, this.fn)
                     this.fn = null
                 }
             }
