@@ -2,6 +2,7 @@
 
 var Mux = require('./mux')
 var _normalize = Mux.keyPath.normalize
+var _digest = Mux.keyPath.digest
 
 function _keys(o) {
     return Object.keys(o)
@@ -107,12 +108,6 @@ module.exports = {
         obj.__proto__ = proto
         obj.__proto__.__proto__ = end
     },
-    /**
-     *  Whether a text is with express syntax
-     */
-    isExpr: function (c) {
-        return c ? c.trim().match(/^\{[\s\S]*?\}$/m) : false
-    },
     domRange: function (tar, before, after) {
         var children = []
         var nodes = tar.childNodes
@@ -170,5 +165,7 @@ module.exports = {
         return str.replace(escapeRex, function (m) {
             return escapeCharMap[m]
         })
-    }
+    },
+    normalize: _normalize,
+    digest: _digest
 }

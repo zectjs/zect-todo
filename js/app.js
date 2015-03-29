@@ -4,7 +4,7 @@
 
 	'use strict';
 	Zect.namespace('v')
-
+	console.time('running...')
 	var _todoId = 1
 	exports.app = new Zect({
 
@@ -158,5 +158,5 @@
 			}
 		}
 	});
-
+	console.timeEnd('running...')
 })(window);

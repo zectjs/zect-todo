@@ -3,12 +3,16 @@ var is = require('./is')
 var Mux = require('./mux')
 var util = require('./util')
 var conf = require('./conf')
-
+var execute = require('./execute')
 var Compiler = require('./compiler')
+var Expression = require('./expression')
+
 var Directive = Compiler.Directive
 var AttributeDirective = Compiler.Attribute
 var TextDirective = Compiler.Text
 var ElementDirective = Compiler.Element
+
+var _isExpr = Expression.isExpr
 
 /**
  *  private vars
@@ -145,14 +149,13 @@ function ViewModel(options) {
     vm.$get = function () {
         return $data.$get.apply($data, arguments)
     }
-    vm.$watch = function (fn) {
-        if (util.type(fn) !== 'function') return console.warn('Listener handler is not a function.')
-        return $data.$watch(fn)
+    vm.$watch = function (/*[ keypath ], */fn) {
+        // if (util.type(fn) !== 'function') return console.warn('Listener handler is not a function.')
+        return $data.$watch.apply($data, arguments)
     }
-    vm.$unwatch = function (fn) {
-        return $data.$unwatch(fn)
+    vm.$unwatch = function (/*[ keypath ], */fn) {
+        return $data.$unwatch.apply($data, arguments)
     }
-
     if (options.$data) {
         $data = options.$data
         // if state model instance passsing, call after set
@@ -165,7 +168,6 @@ function ViewModel(options) {
         
         // Instance observable state model
         var mopts = {
-            deep: true,
             props: dataOpt,
             computed: options.computed,
             computedContext: vm
@@ -346,49 +348,39 @@ function ViewModel(options) {
      */
     function compileComponent (node, parentVM, scope) {
         var $node = $(node)
-        var CompName = $node.attr(NS + 'component') || node.tagName
+        var cAttName = NS + 'component'
+        var CompName = $node.attr(cAttName) || node.tagName
         var Comp = getComponent(CompName)
 
         /**
-         *  Tag is not a custom element
+         *  Tag is not a custom component element
          */
         if (!Comp) return
-
-        $node.removeAttr(NS +'component')
+        $node.removeAttr(cAttName)
 
         // don't need deep into self
         if (node === parentVM.$el) return
 
         var ref = $(node).attr('ref')
+        var dAttName = NS + 'data'
+        var mAttName = NS + 'methods'
 
-        var dataExpr = $node.attr(NS + 'data')
-        var methods = $node.attr(NS + 'methods')
-        $node.removeAttr(NS + 'data').removeAttr(NS + 'methods')
+        var dataExpr = $node.attr(dAttName)
+        var methods = $node.attr(mAttName)
 
-        var _isDataExpr = util.isExpr(dataExpr)
+        $node.removeAttr(dAttName).removeAttr(mAttName)
+
+        var _isDataExpr = _isExpr(dataExpr)
         var bindingData
         var bindingMethods
         /**
          *  Watch
          */
-        var sep = ';'
-        var sepRegexp = new RegExp(sep, 'g')
+        var execLiteral = Expression.execLiteral
         var ast = {}
         var revealAst = {}
         var compVM
 
-        function _executeBindingMethods () {
-            var methodObjExpr = methods.replace(sepRegexp, ',')
-            return util.isExpr(methods) 
-                    ? Compiler.execute(parentVM, scope, methodObjExpr) 
-                    : {}
-        }
-        function _executeBindingData () {
-            var dataObjExpr = dataExpr.replace(sepRegexp, ',')
-            return util.isExpr(dataExpr) 
-                    ? Compiler.execute(parentVM, scope, dataObjExpr) 
-                    : {}
-        }
         function _parseExpr (expr) {
             var name
             var expr = expr.replace(/^[^:]+:/, function (m) {
@@ -398,7 +390,7 @@ function ViewModel(options) {
             return {
                 name: name,
                 expr: expr,
-                vars: Compiler.extractVars(expr)
+                vars: Expression.extract(expr)
             }
         }
         function _setBindingObj (expr) {
@@ -409,8 +401,8 @@ function ViewModel(options) {
             })
         }
 
-        var bindingData = _executeBindingData()
-        var bindingMethods = _executeBindingMethods() // --> bindingMethods
+        var bindingData = execLiteral(dataExpr, parentVM, scope)
+        var bindingMethods = execLiteral(methods, parentVM, scope) // --> bindingMethods
         
         compVM = new Comp({
             el: node,
@@ -419,7 +411,9 @@ function ViewModel(options) {
             $parent: parentVM
         })
 
-        var plainDataExpr = _isDataExpr ? Compiler.stripExpr(dataExpr) : ''
+        var plainDataExpr = _isDataExpr ? Expression.strip(dataExpr) : ''
+        var sep = Expression.sep
+
         if (plainDataExpr) {
             if (plainDataExpr.match(sep)) {
                 plainDataExpr.replace(new RegExp(sep + '\\s*$'), '') // trim last seperator
@@ -431,12 +425,12 @@ function ViewModel(options) {
         }
         // watch and binding
         if (_isDataExpr) {
-            parentVM.$data.$watch(function (keyPath, nv) {
+            parentVM.$data.$watch(function (keyPath) {
                 var nextState
                 util.objEach(revealAst, function (varName, bindingName) {
                     if (keyPath.indexOf(varName) === 0) {
                         !nextState && (nextState = {})
-                        nextState[bindingName] = Compiler.execute(parentVM, scope, ast[bindingName].expr)
+                        nextState[bindingName] = execute(parentVM, scope, ast[bindingName].expr)
                     }
                 })
                 nextState && compVM.$set(nextState)
@@ -447,12 +441,10 @@ function ViewModel(options) {
 
         _components.push(compVM)
         _setBindings2Scope(scope, compVM)
-
-        // TBM -- to be modify, instance method show not be attached here
+        // TBM -- to be modify, instance method should not be attached here
         compVM.$update = function () {
-            _isDataExpr && compVM.$set(_executeBindingData())
+            _isDataExpr && compVM.$set(execLiteral(dataExpr, parentVM, scope))
         }
-
         return compVM
     }
 
@@ -476,13 +468,13 @@ function ViewModel(options) {
             // parse att
             if (~componentProps.indexOf(aname)) {
                 return
-            }else if (util.isExpr(aname)) {
+            }else if (_isExpr(aname)) {
                 // variable attribute name
                 ast.attrs[aname] = v
             } else if (aname.indexOf(NS) === 0) {
                 // directive
                 ast.dires[aname] = v
-            } else if (util.isExpr(v.trim())) {
+            } else if (_isExpr(v.trim())) {
                 // named attribute with expression
                 ast.attrs[aname] = v
             } else {
@@ -513,7 +505,7 @@ function ViewModel(options) {
                     var d
                     // multiple defines expression parse
                     if (def.multi && expr.match(sep)) {
-                        Compiler.stripExpr(expr)
+                        Expression.strip(expr)
                                 .split(sep)
                                 .forEach(function(item) {
                                     d = new Directive(vm, scope, node, def, dname, '{' + item + '}')
@@ -532,11 +524,12 @@ function ViewModel(options) {
 
     function compileText (node, vm, scope) {
         var originExpr = node.nodeValue
-        var v = originExpr.replace(/\\{/g, '\uFFF0')
-                          .replace(/\\}/g, '\uFFF1')
-        var exprReg = /\{[\s\S]*?\}/g
+        var v = Expression.veil(originExpr)
+        var exprReg = Expression.exprRegexp
+
         var parts = v.split(exprReg)
         var exprs = v.match(exprReg)
+
         var inst
         // expression match or not
         if (exprs && exprs.length) {

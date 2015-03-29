@@ -124,10 +124,11 @@ module.exports = function(Zect) {
 
                 $vm.$scope.$update()
             },
-            update: function(items, preItems, kp) {
+            update: function(items, preItems, kp, method, args) {
                 if (!items || !items.forEach) {
                     return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
                 }
+
                 var that = this
                 function createSubVM(item, index) {
                     var subEl = that.child.cloneNode(true)
@@ -163,6 +164,110 @@ module.exports = function(Zect) {
                         $scope: $scope
                     }
                 }
+
+                function destroyVM (vm) {
+                    vm.$scope.bindings.forEach(function (bd) {
+                        bd.$destroy()
+                    })
+                    vm.$compiler.$remove().$destroy()
+                }
+
+                function updateVMIndex (vm, index) {
+                    vm.$index = index
+                    var $data = vm.$scope.data
+                    $data.$index = index
+                    vm.$scope.$update()
+                }
+
+                var $floor = this.$floor()
+                var $ceil = this.$ceil()
+                var vm
+                var done
+                switch (method) {
+                    case 'splice':
+                        args = [].slice.call(args)
+                        var ind = Number(args[0] || 0)
+                        var len = Number(args[1] || 0)
+                        var max = this.$vms.length
+                        ind = ind > max ? max : ind
+                        // has not modify
+                        if (args.length == 2 && !len) return
+                        else if (args.length > 2) {
+                            // insert
+                            var insertVms = args.slice(2).map(function (item, index) {
+                                return createSubVM(item, start + index)
+                            })
+                            var start = ind + insertVms.length
+
+                            this.$vms.splice.apply(this.$vms, [ind, len].concat(insertVms))
+                            this.$vms.forEach(function (vm, i) {
+                                if (i >= start) {
+                                    updateVMIndex(vm, i)
+                                }
+                            })
+                        } else {
+                            // remove
+                            this.$vms.splice
+                                     .apply(this.$vms, args)
+                                     .forEach(function (vm, i) {
+                                        destroyVM(vm)
+                                     })
+
+                            this.$vms.forEach(function (vm, i) {
+                                if (i >= ind) {
+                                    updateVMIndex(vm, i)
+                                }
+                            })
+                        }
+                        done = 1
+                        break
+                    case 'push':
+                        var index = items.length - 1
+                        vm = createSubVM(items[index], index)
+                        this.$vms.push(vm)
+                        vm.$compiler.$insertBefore($floor)
+                        done = 1
+                        break
+                    case 'pop':
+                        vm = this.$vms.pop()
+                        destroyVM(vm)
+                        done = 1
+                        break
+                    case 'shift':
+                        vm = this.$vms.shift()
+                        destroyVM(vm)
+                        this.$vms.forEach(function (v, i) {
+                            updateVMIndex(v, i)
+                        })
+                        done = 1
+                        break
+                    case 'unshift':
+                        vm = createSubVM(items[0], 0)
+                        this.$vms.unshift(vm)
+                        vm.$compiler.$insertAfter($ceil)
+                        this.$vms.forEach(function (v, i) {
+                            if (i != 0) {
+                                updateVMIndex(v, i)
+                            }
+                        })
+                        done = 1
+                        break
+                    case '$concat':
+                        var srcLen = this.$vms.length
+                        var fragment = document.createDocumentFragment()
+                        items.slice(srcLen).forEach(function (item, i) {
+                            var vm = createSubVM(item, i + srcLen)
+                            this.$vms.push(vm)
+                            fragment.appendChild(vm.$compiler.$bundle())
+                        }.bind(this))
+                        $floor.parentNode.insertBefore(fragment, $floor)
+                        done = 1
+                        break
+                }
+                if (done) {
+                    this.last = util.copyArray(items)
+                    return
+                }
                 /**
                  *  vms diff
                  */
@@ -197,6 +302,7 @@ module.exports = function(Zect) {
                             v.$value = item
 
                             var $data = v.$scope.data = _getData(item)
+
                             $data.$index = index
                             $data.$value = item
                             updateVms.push(v)
@@ -210,8 +316,6 @@ module.exports = function(Zect) {
                 
                 this.$vms = vms
                 this.last = util.copyArray(items)
-
-                var $floor = this.$floor()
                 // from rear to head
                 var len = vms.length
                 var i = 0
@@ -223,15 +327,8 @@ module.exports = function(Zect) {
                     // reset $index
                     v.$scope.$update()
                 })
-
                 updateVms = null
-
-                oldVms && oldVms.forEach(function(v) {
-                    v.$scope.bindings.forEach(function (bd) {
-                        bd.$destroy()
-                    })
-                    v.$compiler.$remove().$destroy()
-                })
+                oldVms && oldVms.forEach(destroyVM)
             }
         }
     }

@@ -70,18 +70,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	var Mux = __webpack_require__(4)
 	var util = __webpack_require__(5)
 	var conf = __webpack_require__(6)
+	var execute = __webpack_require__(7)
+	var Compiler = __webpack_require__(8)
+	var Expression = __webpack_require__(9)
 
-	var Compiler = __webpack_require__(7)
 	var Directive = Compiler.Directive
 	var AttributeDirective = Compiler.Attribute
 	var TextDirective = Compiler.Text
 	var ElementDirective = Compiler.Element
 
+	var _isExpr = Expression.isExpr
+
 	/**
 	 *  private vars
 	 */
-	var presetDirts = __webpack_require__(8)(Zect)  // preset directives getter
-	var elements = __webpack_require__(9)(Zect)      // preset directives getter
+	var presetDirts = __webpack_require__(10)(Zect)  // preset directives getter
+	var elements = __webpack_require__(11)(Zect)      // preset directives getter
 	var allDirectives = [presetDirts, {}]                // [preset, global]
 	var gdirs = allDirectives[1]
 	var gcomps = {}                                 // global define components
@@ -212,14 +216,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	    vm.$get = function () {
 	        return $data.$get.apply($data, arguments)
 	    }
-	    vm.$watch = function (fn) {
-	        if (util.type(fn) !== 'function') return console.warn('Listener handler is not a function.')
-	        return $data.$watch(fn)
+	    vm.$watch = function (/*[ keypath ], */fn) {
+	        // if (util.type(fn) !== 'function') return console.warn('Listener handler is not a function.')
+	        return $data.$watch.apply($data, arguments)
 	    }
-	    vm.$unwatch = function (fn) {
-	        return $data.$unwatch(fn)
+	    vm.$unwatch = function (/*[ keypath ], */fn) {
+	        return $data.$unwatch.apply($data, arguments)
 	    }
-
 	    if (options.$data) {
 	        $data = options.$data
 	        // if state model instance passsing, call after set
@@ -232,7 +235,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        
 	        // Instance observable state model
 	        var mopts = {
-	            deep: true,
 	            props: dataOpt,
 	            computed: options.computed,
 	            computedContext: vm
@@ -413,49 +415,39 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    function compileComponent (node, parentVM, scope) {
 	        var $node = $(node)
-	        var CompName = $node.attr(NS + 'component') || node.tagName
+	        var cAttName = NS + 'component'
+	        var CompName = $node.attr(cAttName) || node.tagName
 	        var Comp = getComponent(CompName)
 
 	        /**
-	         *  Tag is not a custom element
+	         *  Tag is not a custom component element
 	         */
 	        if (!Comp) return
-
-	        $node.removeAttr(NS +'component')
+	        $node.removeAttr(cAttName)
 
 	        // don't need deep into self
 	        if (node === parentVM.$el) return
 
 	        var ref = $(node).attr('ref')
+	        var dAttName = NS + 'data'
+	        var mAttName = NS + 'methods'
 
-	        var dataExpr = $node.attr(NS + 'data')
-	        var methods = $node.attr(NS + 'methods')
-	        $node.removeAttr(NS + 'data').removeAttr(NS + 'methods')
+	        var dataExpr = $node.attr(dAttName)
+	        var methods = $node.attr(mAttName)
 
-	        var _isDataExpr = util.isExpr(dataExpr)
+	        $node.removeAttr(dAttName).removeAttr(mAttName)
+
+	        var _isDataExpr = _isExpr(dataExpr)
 	        var bindingData
 	        var bindingMethods
 	        /**
 	         *  Watch
 	         */
-	        var sep = ';'
-	        var sepRegexp = new RegExp(sep, 'g')
+	        var execLiteral = Expression.execLiteral
 	        var ast = {}
 	        var revealAst = {}
 	        var compVM
 
-	        function _executeBindingMethods () {
-	            var methodObjExpr = methods.replace(sepRegexp, ',')
-	            return util.isExpr(methods) 
-	                    ? Compiler.execute(parentVM, scope, methodObjExpr) 
-	                    : {}
-	        }
-	        function _executeBindingData () {
-	            var dataObjExpr = dataExpr.replace(sepRegexp, ',')
-	            return util.isExpr(dataExpr) 
-	                    ? Compiler.execute(parentVM, scope, dataObjExpr) 
-	                    : {}
-	        }
 	        function _parseExpr (expr) {
 	            var name
 	            var expr = expr.replace(/^[^:]+:/, function (m) {
@@ -465,7 +457,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            return {
 	                name: name,
 	                expr: expr,
-	                vars: Compiler.extractVars(expr)
+	                vars: Expression.extract(expr)
 	            }
 	        }
 	        function _setBindingObj (expr) {
@@ -476,8 +468,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	            })
 	        }
 
-	        var bindingData = _executeBindingData()
-	        var bindingMethods = _executeBindingMethods() // --> bindingMethods
+	        var bindingData = execLiteral(dataExpr, parentVM, scope)
+	        var bindingMethods = execLiteral(methods, parentVM, scope) // --> bindingMethods
 	        
 	        compVM = new Comp({
 	            el: node,
@@ -486,7 +478,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	            $parent: parentVM
 	        })
 
-	        var plainDataExpr = _isDataExpr ? Compiler.stripExpr(dataExpr) : ''
+	        var plainDataExpr = _isDataExpr ? Expression.strip(dataExpr) : ''
+	        var sep = Expression.sep
+
 	        if (plainDataExpr) {
 	            if (plainDataExpr.match(sep)) {
 	                plainDataExpr.replace(new RegExp(sep + '\\s*$'), '') // trim last seperator
@@ -498,12 +492,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        }
 	        // watch and binding
 	        if (_isDataExpr) {
-	            parentVM.$data.$watch(function (keyPath, nv) {
+	            parentVM.$data.$watch(function (keyPath) {
 	                var nextState
 	                util.objEach(revealAst, function (varName, bindingName) {
 	                    if (keyPath.indexOf(varName) === 0) {
 	                        !nextState && (nextState = {})
-	                        nextState[bindingName] = Compiler.execute(parentVM, scope, ast[bindingName].expr)
+	                        nextState[bindingName] = execute(parentVM, scope, ast[bindingName].expr)
 	                    }
 	                })
 	                nextState && compVM.$set(nextState)
@@ -514,12 +508,10 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	        _components.push(compVM)
 	        _setBindings2Scope(scope, compVM)
-
-	        // TBM -- to be modify, instance method show not be attached here
+	        // TBM -- to be modify, instance method should not be attached here
 	        compVM.$update = function () {
-	            _isDataExpr && compVM.$set(_executeBindingData())
+	            _isDataExpr && compVM.$set(execLiteral(dataExpr, parentVM, scope))
 	        }
-
 	        return compVM
 	    }
 
@@ -543,13 +535,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	            // parse att
 	            if (~componentProps.indexOf(aname)) {
 	                return
-	            }else if (util.isExpr(aname)) {
+	            }else if (_isExpr(aname)) {
 	                // variable attribute name
 	                ast.attrs[aname] = v
 	            } else if (aname.indexOf(NS) === 0) {
 	                // directive
 	                ast.dires[aname] = v
-	            } else if (util.isExpr(v.trim())) {
+	            } else if (_isExpr(v.trim())) {
 	                // named attribute with expression
 	                ast.attrs[aname] = v
 	            } else {
@@ -580,7 +572,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    var d
 	                    // multiple defines expression parse
 	                    if (def.multi && expr.match(sep)) {
-	                        Compiler.stripExpr(expr)
+	                        Expression.strip(expr)
 	                                .split(sep)
 	                                .forEach(function(item) {
 	                                    d = new Directive(vm, scope, node, def, dname, '{' + item + '}')
@@ -599,11 +591,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    function compileText (node, vm, scope) {
 	        var originExpr = node.nodeValue
-	        var v = originExpr.replace(/\\{/g, '\uFFF0')
-	                          .replace(/\\}/g, '\uFFF1')
-	        var exprReg = /\{[\s\S]*?\}/g
+	        var v = Expression.veil(originExpr)
+	        var exprReg = Expression.exprRegexp
+
 	        var parts = v.split(exprReg)
 	        var exprs = v.match(exprReg)
+
 	        var inst
 	        // expression match or not
 	        if (exprs && exprs.length) {
@@ -824,7 +817,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
-	* Mux.js v2.4.4
+	* Mux.js v2.4.8
 	* (c) 2014 guankaishe
 	* Released under the MIT License.
 	*/
@@ -1030,7 +1023,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		     *  Observe initial properties
 		     */
 		    $util.objEach(_initialProps, function (pn, pv) {
-		        _$add(pn, pv)
+		        _$add(pn, pv, true)
 		    })
 		    _initialProps = null
 
@@ -1087,15 +1080,15 @@ return /******/ (function(modules) { // webpackBootstrap
 		    //  local proxy for EventEmitter
 		    function _emitChange(propname/*, arg1, ..., argX*/) {
 		        var args = arguments
-		        var evtArgs = $util.copyArray(args)
 		        var kp = $normalize($join(_rootPath(), propname))
 		        args[0] = CHANGE_EVENT + ':' + kp
 		        _emitter.emit(CHANGE_EVENT, kp)
 		        emitter.emit.apply(emitter, args)
 
-		        evtArgs[0] = kp
-		        evtArgs.unshift('*')
-		        emitter.emit.apply(emitter, evtArgs)
+		        args = $util.copyArray(args)
+		        args[0] = kp
+		        args.unshift('*')
+		        emitter.emit.apply(emitter, args)
 		    }
 		    /**
 		     *  Add dependence to "_cptDepsMapping"
@@ -1163,7 +1156,11 @@ return /******/ (function(modules) { // webpackBootstrap
 		                var result = nativeMethod.apply(self, args)
 		                // set value directly after walk
 		                _props[name] = _walk(name, self, kp)
-		                _emitChange(name, self, pv)
+		                if (methodName == 'splice') {
+		                    _emitChange(name, self, pv, methodName, args)
+		                } else {
+		                    _emitChange(name, self, pv, methodName)
+		                }
 		                return result
 		            })
 		        }
@@ -1280,7 +1277,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		     *  @param prop <String> property name
 		     *  @param value property value
 		     */
-		    function _$add(prop, value) {
+		    function _$add(prop, value, silence) {
 		        if (prop.match(/[\.\[\]]/)) {
 		            throw new Error('Propname shoudn\'t contains "." or "[" or "]"')
 		        }
@@ -1301,7 +1298,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		            }
 		        })
 		        // add peroperty will trigger change event
-		        _emitChange(prop, value)
+		        !silence && _emitChange(prop, value)
 		    }
 
 		    /**
@@ -1646,8 +1643,8 @@ return /******/ (function(modules) { // webpackBootstrap
 		    this._obs = {}
 		    this._context = context
 		}
-
-		Message.prototype.on = function(sub, cb, scope) {
+		var proto = Message.prototype
+		proto.on = function(sub, cb, scope) {
 		    scope = scope || _scopeDefault
 		    _patch(this._obs, sub, [])
 
@@ -1662,7 +1659,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		 *  @param [cb] <Function> callback, Optional, if callback is not exist,
 		 *      will remove all callback of that sub
 		 */
-		Message.prototype.off = function( /*subject, cb, scope*/ ) {
+		proto.off = function( /*subject, cb, scope*/ ) {
 		    var types
 		    var args = arguments
 		    var len = args.length
@@ -1720,7 +1717,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 		    return this
 		}
-		Message.prototype.emit = function(sub) {
+		proto.emit = function(sub) {
 		    var obs = this._obs[sub]
 		    if (!obs) return
 		    var args = [].slice.call(arguments)
@@ -1769,13 +1766,22 @@ return /******/ (function(modules) { // webpackBootstrap
 		    return obj
 		}
 		/**
+		 *  Get undefine
+		 */
+		function undf () {
+		    return void(0)
+		}
+		function isNon (o) {
+		    return o === undf || o === null
+		}
+		/**
 		 *  get value of object by keypath
 		 */
 		function _get(obj, keypath) {
 		    var parts = _keyPathNormalize(keypath).split('.')
 		    var dest = obj
 		    parts.forEach(function(key) {
-		        // Still set to non-object, just throw that error
+		        if (isNon(dest)) return !(dest = undf())
 		        dest = dest[key]
 		    })
 		    return dest
@@ -1817,18 +1823,34 @@ return /******/ (function(modules) { // webpackBootstrap
 		'use strict';
 
 		var $util = __webpack_require__(6)
-		var hookMethods = ['splice', 'push', 'pop', 'shift', 'unshift', 'reverse']
+		var hookMethods = ['splice', 'push', 'pop', 'shift', 'unshift', 'reverse', 'sort', '$concat']
+		var _push = Array.prototype.push
+		var _slice = Array.prototype.slice
+		var attachMethods = {
+		    '$concat': function () {
+		        var args = _slice.call(arguments)
+		        var arr = this
+		        args.forEach(function (items) {
+		            $util.type(items) == 'array' 
+		                ? items.forEach(function (item) {
+		                        _push.call(arr, item)
+		                    })
+		                : _push.call(arr, items)
+		        })
+		        return arr
+		    }
+		}
 		var hookFlag ='__hook__'
 
 		module.exports = function (arr, hook) {
 		    hookMethods.forEach(function (m) {
-		        if (arr[m][hookFlag]) {
+		        if (arr[m] && arr[m][hookFlag]) {
 		            // reset hook method
 		            arr[m][hookFlag](hook)
 		            return
 		        }
 		        // cached native method
-		        var nativeMethod = arr[m]
+		        var nativeMethod = arr[m] || attachMethods[m]
 		        // method proxy
 		        $util.def(arr, m, {
 		            enumerable: false,
@@ -1972,6 +1994,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	var Mux = __webpack_require__(4)
 	var _normalize = Mux.keyPath.normalize
+	var _digest = Mux.keyPath.digest
 
 	function _keys(o) {
 	    return Object.keys(o)
@@ -2077,12 +2100,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        obj.__proto__ = proto
 	        obj.__proto__.__proto__ = end
 	    },
-	    /**
-	     *  Whether a text is with express syntax
-	     */
-	    isExpr: function (c) {
-	        return c ? c.trim().match(/^\{[\s\S]*?\}$/m) : false
-	    },
 	    domRange: function (tar, before, after) {
 	        var children = []
 	        var nodes = tar.childNodes
@@ -2140,7 +2157,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return str.replace(escapeRex, function (m) {
 	            return escapeCharMap[m]
 	        })
-	    }
+	    },
+	    normalize: _normalize,
+	    digest: _digest
 	}
 
 
@@ -2165,47 +2184,92 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 7 */
 /***/ function(module, exports, __webpack_require__) {
 
+	var util = __webpack_require__(5)
+
+	/**
+	 *  Calc expression value
+	 */
+	function _execute($vm, $scope/*, expression, [label], [target]*/) {
+	    /**
+	     *  $scope is passed when call instance method $compile, 
+	     *  Each "scope" object maybe include "$parent, data, method" properties
+	     */
+	    var $parent = $scope && $scope.$parent ? util.extend({}, $scope.$parent.methods, $scope.$parent.data) : {}
+	    
+	    $scope = $scope || {}
+	    $scope = util.extend({}, $vm.$methods, $vm.$data, $scope.methods, $scope.data)
+
+	    try {
+	        return util.immutable(eval('with($scope){(%s)}'.replace('%s', arguments[2])))
+	    } catch (e) {
+	        var expr = '. {' + arguments[2] + '}'
+	        var label = arguments[3]
+	        var target = arguments[4]
+	        switch (e.name) {
+	            case 'ReferenceError':
+	                console.warn(e.message + expr)
+	                break
+	            default:
+	                console.error(
+	                     (label ? '\'' + label + '\': ' : ''),
+	                    e.message +
+	                    expr,
+	                    target || ''
+	                )
+	        }
+	        return ''
+	    }
+	}
+	module.exports = _execute
+
+/***/ },
+/* 8 */
+/***/ function(module, exports, __webpack_require__) {
+
 	'use strict';
 
 	var $ = __webpack_require__(2)
 	var util = __webpack_require__(5)
-	var _execute = __webpack_require__(10)
+	var Expression = __webpack_require__(9)
+	var _execute = __webpack_require__(7)
 	var _relative = util.relative
 	/**
 	 *  Whether a text is with express syntax
 	 */
-	var _isExpr = util.isExpr
+	var _isExpr = Expression.isExpr
 	/**
 	 *  Get varibales of expression
 	 */
-	function _extractVars(expr) {
-	    if (!expr) return null
-
-	    var reg = /("|').+?[^\\]\1|\.\w*|\$\w*|\w*:|\b(?:this|true|false|null|undefined|new|typeof|Number|String|Object|Array|Math|Date|JSON)\b|([a-z_]\w*)\(|([a-z_]\w*)/gi
-	    var vars = expr.match(reg)
-	    vars = !vars ? [] : vars.filter(function(i) {
-	        if (!i.match(/^[."']/) && !i.match(/\($/)) {
-	            return i
-	        }
-	    })
-	    return vars
-	}
+	var _extractVars = Expression.extract
 
 	function noop () {}
+
+	var keywords = ['$index', '$value', '$parent', '$vm', '$scope']
 	/**
 	 *  watch changes of variable-name of keypath
 	 *  @return <Function> unwatch
 	 */
 	function _watch(vm, vars, update) {
+	    var watchKeys = []
+	    var noEmpty
 	    function _handler (kp) {
-	        var rel = vars.some(function(key, index) {
+	        var rel = watchKeys.some(function(key, index) {
 	                if (_relative(kp, key)) {
 	                    return true
 	                }
 	            })
-	        if (rel) update(kp)
+	        if (rel) update.apply(null, arguments)
 	    }
+
 	    if (vars && vars.length) {
+	        vars.forEach(function (k) {
+	            if (~keywords.indexOf(k)) return
+	            while (k) {
+	                if (!~watchKeys.indexOf(k)) watchKeys.push(k)
+	                k = util.digest(k)
+	            }
+	        })
+	        if (!watchKeys.length) return noop
 	        vm.$watch(_handler)
 	        return function () {
 	            vm.$unwatch(_handler)
@@ -2214,15 +2278,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return noop
 	}
 
-	function _strip(t) {
-	    return t.trim()
-	            .match(/^\{([\s\S]*)\}$/m)[1]
-	            .replace(/^- /, '')
-	}
 
-	function _isUnescape(t) {
-	    return !!t.match(/^\{\- /)
-	}
+	var _strip = Expression.strip
 
 	/**
 	 *  Compoiler constructor for wrapping node with consistent API
@@ -2231,11 +2288,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	function compiler (node) {
 	    this.$el = node
 	}
-	compiler.execute = _execute
-	compiler.stripExpr = _strip
-	compiler.extractVars = _extractVars
 
 	var cproto = compiler.prototype
+
 	compiler.inherit = function (Ctor) {
 	    Ctor.prototype.__proto__ = cproto
 	    return function Compiler() {
@@ -2277,7 +2332,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.$el = null
 	    return this
 	}
-	cproto.$update = function () {}
+	cproto.$update = noop
 	/**
 	 *  Standard directive
 	 */
@@ -2428,7 +2483,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /**
 	     *  update handler
 	     */
-	    function _update(kp) {
+	    function _update(kp, nv, pv, method, ind, len) {
 	        var nexv = _exec(expr)
 	        if (delta && delta.call(d, nexv, prev, kp)) {
 	            return deltaUpdate && deltaUpdate.call(d, nexv, p, kp)
@@ -2436,7 +2491,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (util.diff(nexv, prev)) {
 	            var p = prev
 	            prev = nexv
-	            upda && upda.call(d, nexv, p, kp)
+	            upda && upda.call(d, nexv, p, kp, method, ind, len)
 	        }
 	    }
 
@@ -2464,7 +2519,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 	    var cache = new Array(exprs.length)
 	    var isUnescape = exprs.some(function (expr) {
-	        return _isUnescape(expr)
+	        return Expression.isUnescape(expr)
 	    })
 	    var unwatches = []
 
@@ -2509,9 +2564,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	        })
 
-	        var nodeV = frags.join('')
-	                         .replace(/\uFFF0/g, '\\{')
-	                         .replace(/\uFFF1/g, '\\}')
+	        var value = Expression.unveil(frags.join(''))
 
 	        if (isUnescape) {
 	            var cursor = _nextSibling($before)
@@ -2520,13 +2573,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	                _parentNode(cursor).removeChild(cursor)
 	                cursor = next
 	            }
-	            $tmp.innerHTML = nodeV
+	            $tmp.innerHTML = value
 	            ;[].slice.call($tmp.childNodes).forEach(function (n) {
 	                _appendChild($con, n)
 	            }) 
 	            _insertBefore(_parentNode($after), $con, $after)
 	        } else {
-	            tar.nodeValue = nodeV
+	            tar.nodeValue = value
 	        }
 	    }
 
@@ -2643,7 +2696,66 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 8 */
+/* 9 */
+/***/ function(module, exports, __webpack_require__) {
+
+	'use strict';
+
+	var execute = __webpack_require__(7)
+
+	var _sep = ';'
+	var _sepRegexp = new RegExp(_sep, 'g')
+	var _literalSep = ','
+	var _exprRegexp = /\{[\s\S]*?\}/g
+	var _varsRegexp = /("|').+?[^\\]\1|\.\w*|\$\w*|\w*:|\b(?:this|true|false|null|undefined|new|typeof|Number|String|Object|Array|Math|Date|JSON)\b|([a-z_]\w*)\(|([a-z_]\w*)/gi
+	/**
+	 *  Whether a text is with express syntax
+	 */
+	function _isExpr(c) {
+	    return c ? !!c.trim().match(/^\{[\s\S]*?\}$/m) : false
+	}
+	module.exports = {
+	    sep: _sep,
+	    literalSep: _literalSep,
+
+	    sepRegexp: _sepRegexp,
+	    exprRegexp: _exprRegexp,
+
+	    isExpr: _isExpr,
+	    isUnescape: function(expr) {
+	        return !!expr.match(/^\{\- /)
+	    },
+	    execLiteral: function (expr, vm, scope) {
+	        if (!_isExpr(expr)) return {}
+	        return execute(vm, scope, expr.replace(_sepRegexp, _literalSep))
+	    },
+	    veil: function (expr) {
+	        return expr.replace(/\\{/g, '\uFFF0')
+	                   .replace(/\\}/g, '\uFFF1')
+	    },
+	    unveil: function (expr) {
+	        return expr.replace(/\uFFF0/g, '\\{')
+	                   .replace(/\uFFF1/g, '\\}')
+	    },
+	    strip: function (expr) {
+	        return expr.trim()
+	                .match(/^\{([\s\S]*)\}$/m)[1]
+	                .replace(/^- /, '')
+	    },
+	    extract: function(expr) {
+	        if (!expr) return null
+	        var vars = expr.match(_varsRegexp)
+	        vars = !vars ? [] : vars.filter(function(i) {
+	            if (!i.match(/^[\."'\]\[]/) && !i.match(/\($/)) {
+	                return i
+	            }
+	        })
+	        return vars
+	    }
+	}
+
+/***/ },
+/* 10 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -2726,44 +2838,39 @@ return /******/ (function(modules) { // webpackBootstrap
 	                }
 
 	                var vm = this.$vm
-	                var CHECKBOX = 'checkbox'
+	                var vType = type == 'checkbox' ? 'checked':'value'
 	                var that = this
 
 	                function _updateDOM() {
-	                    if (type == CHECKBOX) {
-	                        that.$el.checked = vm.$get(prop)
-	                    } else {
-	                        that.$el.value = vm.$get(prop)
-	                    }
-	                }
-
-	                function _updateState() {
-	                    if (type == CHECKBOX) {
-	                        vm.$set(prop, that.$el.checked)
-	                    } else {
-	                        vm.$set(prop, that.$el.value)
-	                    }
+	                    that.$el[vType] = vm.$get(prop)
 	                }
 	                /**
 	                 *  DOM input 2 state
 	                 */
-	                this._requestChange = _updateState
+	                this._requestChange = function () {
+	                    vm.$set(prop, that.$el[vType])
+	                }
 	                /**
 	                 *  State 2 DOM input
 	                 */
 	                this._update = function (kp) {
-	                    if (_relative(kp, prop)) {
-	                        _updateDOM()
-	                    }
+	                    _updateDOM()
 	                }
 	                $el.on(this.evtType, this._requestChange)
-
 	                _updateDOM()
-	                this.$vm.$watch(this._update)
+
+	                var watches = this._watches = []
+	                var wKeypath = util.normalize(prop)
+	                while (wKeypath) {
+	                    watches.push(this.$vm.$watch(wKeypath, this._update))
+	                    wKeypath = util.digest(wKeypath)
+	                }
 	            },
 	            unbind: function () {
 	                this._$el.off(this.evtType, this._requestChange)
-	                this.$vm.$unwatch(this._update)
+	                this._watches.forEach(function (f) {
+	                    f()
+	                })
 	            }
 	        },
 	        'on': {
@@ -2804,7 +2911,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 9 */
+/* 11 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -2933,10 +3040,11 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	                $vm.$scope.$update()
 	            },
-	            update: function(items, preItems, kp) {
+	            update: function(items, preItems, kp, method, args) {
 	                if (!items || !items.forEach) {
 	                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
 	                }
+
 	                var that = this
 	                function createSubVM(item, index) {
 	                    var subEl = that.child.cloneNode(true)
@@ -2972,6 +3080,110 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        $scope: $scope
 	                    }
 	                }
+
+	                function destroyVM (vm) {
+	                    vm.$scope.bindings.forEach(function (bd) {
+	                        bd.$destroy()
+	                    })
+	                    vm.$compiler.$remove().$destroy()
+	                }
+
+	                function updateVMIndex (vm, index) {
+	                    vm.$index = index
+	                    var $data = vm.$scope.data
+	                    $data.$index = index
+	                    vm.$scope.$update()
+	                }
+
+	                var $floor = this.$floor()
+	                var $ceil = this.$ceil()
+	                var vm
+	                var done
+	                switch (method) {
+	                    case 'splice':
+	                        args = [].slice.call(args)
+	                        var ind = Number(args[0] || 0)
+	                        var len = Number(args[1] || 0)
+	                        var max = this.$vms.length
+	                        ind = ind > max ? max : ind
+	                        // has not modify
+	                        if (args.length == 2 && !len) return
+	                        else if (args.length > 2) {
+	                            // insert
+	                            var insertVms = args.slice(2).map(function (item, index) {
+	                                return createSubVM(item, start + index)
+	                            })
+	                            var start = ind + insertVms.length
+
+	                            this.$vms.splice.apply(this.$vms, [ind, len].concat(insertVms))
+	                            this.$vms.forEach(function (vm, i) {
+	                                if (i >= start) {
+	                                    updateVMIndex(vm, i)
+	                                }
+	                            })
+	                        } else {
+	                            // remove
+	                            this.$vms.splice
+	                                     .apply(this.$vms, args)
+	                                     .forEach(function (vm, i) {
+	                                        destroyVM(vm)
+	                                     })
+
+	                            this.$vms.forEach(function (vm, i) {
+	                                if (i >= ind) {
+	                                    updateVMIndex(vm, i)
+	                                }
+	                            })
+	                        }
+	                        done = 1
+	                        break
+	                    case 'push':
+	                        var index = items.length - 1
+	                        vm = createSubVM(items[index], index)
+	                        this.$vms.push(vm)
+	                        vm.$compiler.$insertBefore($floor)
+	                        done = 1
+	                        break
+	                    case 'pop':
+	                        vm = this.$vms.pop()
+	                        destroyVM(vm)
+	                        done = 1
+	                        break
+	                    case 'shift':
+	                        vm = this.$vms.shift()
+	                        destroyVM(vm)
+	                        this.$vms.forEach(function (v, i) {
+	                            updateVMIndex(v, i)
+	                        })
+	                        done = 1
+	                        break
+	                    case 'unshift':
+	                        vm = createSubVM(items[0], 0)
+	                        this.$vms.unshift(vm)
+	                        vm.$compiler.$insertAfter($ceil)
+	                        this.$vms.forEach(function (v, i) {
+	                            if (i != 0) {
+	                                updateVMIndex(v, i)
+	                            }
+	                        })
+	                        done = 1
+	                        break
+	                    case '$concat':
+	                        var srcLen = this.$vms.length
+	                        var fragment = document.createDocumentFragment()
+	                        items.slice(srcLen).forEach(function (item, i) {
+	                            var vm = createSubVM(item, i + srcLen)
+	                            this.$vms.push(vm)
+	                            fragment.appendChild(vm.$compiler.$bundle())
+	                        }.bind(this))
+	                        $floor.parentNode.insertBefore(fragment, $floor)
+	                        done = 1
+	                        break
+	                }
+	                if (done) {
+	                    this.last = util.copyArray(items)
+	                    return
+	                }
 	                /**
 	                 *  vms diff
 	                 */
@@ -3006,6 +3218,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                            v.$value = item
 
 	                            var $data = v.$scope.data = _getData(item)
+
 	                            $data.$index = index
 	                            $data.$value = item
 	                            updateVms.push(v)
@@ -3019,8 +3232,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	                
 	                this.$vms = vms
 	                this.last = util.copyArray(items)
-
-	                var $floor = this.$floor()
 	                // from rear to head
 	                var len = vms.length
 	                var i = 0
@@ -3032,62 +3243,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    // reset $index
 	                    v.$scope.$update()
 	                })
-
 	                updateVms = null
-
-	                oldVms && oldVms.forEach(function(v) {
-	                    v.$scope.bindings.forEach(function (bd) {
-	                        bd.$destroy()
-	                    })
-	                    v.$compiler.$remove().$destroy()
-	                })
+	                oldVms && oldVms.forEach(destroyVM)
 	            }
 	        }
 	    }
 	}
 
-
-/***/ },
-/* 10 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var util = __webpack_require__(5)
-
-	/**
-	 *  Calc expression value
-	 */
-	function _execute($vm, $scope/*, expression, [label], [target]*/) {
-	    /**
-	     *  $scope is passed when call instance method $compile, 
-	     *  Each "scope" object maybe include "$parent, data, method" properties
-	     */
-	    var $parent = $scope && $scope.$parent ? util.extend({}, $scope.$parent.methods, $scope.$parent.data) : {}
-	    
-	    $scope = $scope || {}
-	    $scope = util.extend({}, $vm.$methods, $vm.$data, $scope.methods, $scope.data)
-
-	    try {
-	        return util.immutable(eval('with($scope){(%s)}'.replace('%s', arguments[2])))
-	    } catch (e) {
-	        var expr = '. {' + arguments[2] + '}'
-	        var label = arguments[3]
-	        var target = arguments[4]
-	        switch (e.name) {
-	            case 'ReferenceError':
-	                console.warn(e.message + expr)
-	                break
-	            default:
-	                console.error(
-	                     (label ? '\'' + label + '\': ' : ''),
-	                    e.message +
-	                    expr,
-	                    target || ''
-	                )
-	        }
-	        return ''
-	    }
-	}
-	module.exports = _execute
 
 /***/ }
 /******/ ])

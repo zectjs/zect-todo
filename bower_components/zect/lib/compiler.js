@@ -2,43 +2,46 @@
 
 var $ = require('./dm')
 var util = require('./util')
+var Expression = require('./expression')
 var _execute = require('./execute')
 var _relative = util.relative
 /**
  *  Whether a text is with express syntax
  */
-var _isExpr = util.isExpr
+var _isExpr = Expression.isExpr
 /**
  *  Get varibales of expression
  */
-function _extractVars(expr) {
-    if (!expr) return null
-
-    var reg = /("|').+?[^\\]\1|\.\w*|\$\w*|\w*:|\b(?:this|true|false|null|undefined|new|typeof|Number|String|Object|Array|Math|Date|JSON)\b|([a-z_]\w*)\(|([a-z_]\w*)/gi
-    var vars = expr.match(reg)
-    vars = !vars ? [] : vars.filter(function(i) {
-        if (!i.match(/^[."']/) && !i.match(/\($/)) {
-            return i
-        }
-    })
-    return vars
-}
+var _extractVars = Expression.extract
 
 function noop () {}
+
+var keywords = ['$index', '$value', '$parent', '$vm', '$scope']
 /**
  *  watch changes of variable-name of keypath
  *  @return <Function> unwatch
  */
 function _watch(vm, vars, update) {
+    var watchKeys = []
+    var noEmpty
     function _handler (kp) {
-        var rel = vars.some(function(key, index) {
+        var rel = watchKeys.some(function(key, index) {
                 if (_relative(kp, key)) {
                     return true
                 }
             })
-        if (rel) update(kp)
+        if (rel) update.apply(null, arguments)
     }
+
     if (vars && vars.length) {
+        vars.forEach(function (k) {
+            if (~keywords.indexOf(k)) return
+            while (k) {
+                if (!~watchKeys.indexOf(k)) watchKeys.push(k)
+                k = util.digest(k)
+            }
+        })
+        if (!watchKeys.length) return noop
         vm.$watch(_handler)
         return function () {
             vm.$unwatch(_handler)
@@ -47,15 +50,8 @@ function _watch(vm, vars, update) {
     return noop
 }
 
-function _strip(t) {
-    return t.trim()
-            .match(/^\{([\s\S]*)\}$/m)[1]
-            .replace(/^- /, '')
-}
 
-function _isUnescape(t) {
-    return !!t.match(/^\{\- /)
-}
+var _strip = Expression.strip
 
 /**
  *  Compoiler constructor for wrapping node with consistent API
@@ -64,11 +60,9 @@ function _isUnescape(t) {
 function compiler (node) {
     this.$el = node
 }
-compiler.execute = _execute
-compiler.stripExpr = _strip
-compiler.extractVars = _extractVars
 
 var cproto = compiler.prototype
+
 compiler.inherit = function (Ctor) {
     Ctor.prototype.__proto__ = cproto
     return function Compiler() {
@@ -110,7 +104,7 @@ cproto.$destroy = function () {
     this.$el = null
     return this
 }
-cproto.$update = function () {}
+cproto.$update = noop
 /**
  *  Standard directive
  */
@@ -261,7 +255,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
     /**
      *  update handler
      */
-    function _update(kp) {
+    function _update(kp, nv, pv, method, ind, len) {
         var nexv = _exec(expr)
         if (delta && delta.call(d, nexv, prev, kp)) {
             return deltaUpdate && deltaUpdate.call(d, nexv, p, kp)
@@ -269,7 +263,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
         if (util.diff(nexv, prev)) {
             var p = prev
             prev = nexv
-            upda && upda.call(d, nexv, p, kp)
+            upda && upda.call(d, nexv, p, kp, method, ind, len)
         }
     }
 
@@ -297,7 +291,7 @@ compiler.Text = compiler.inherit(function(vm, scope, tar, originExpr, parts, exp
     }
     var cache = new Array(exprs.length)
     var isUnescape = exprs.some(function (expr) {
-        return _isUnescape(expr)
+        return Expression.isUnescape(expr)
     })
     var unwatches = []
 
@@ -342,9 +336,7 @@ compiler.Text = compiler.inherit(function(vm, scope, tar, originExpr, parts, exp
             }
         })
 
-        var nodeV = frags.join('')
-                         .replace(/\uFFF0/g, '\\{')
-                         .replace(/\uFFF1/g, '\\}')
+        var value = Expression.unveil(frags.join(''))
 
         if (isUnescape) {
             var cursor = _nextSibling($before)
@@ -353,13 +345,13 @@ compiler.Text = compiler.inherit(function(vm, scope, tar, originExpr, parts, exp
                 _parentNode(cursor).removeChild(cursor)
                 cursor = next
             }
-            $tmp.innerHTML = nodeV
+            $tmp.innerHTML = value
             ;[].slice.call($tmp.childNodes).forEach(function (n) {
                 _appendChild($con, n)
             }) 
             _insertBefore(_parentNode($after), $con, $after)
         } else {
-            tar.nodeValue = nodeV
+            tar.nodeValue = value
         }
     }
 

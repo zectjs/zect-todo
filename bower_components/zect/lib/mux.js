@@ -1,5 +1,5 @@
 /**
-* Mux.js v2.4.4
+* Mux.js v2.4.8
 * (c) 2014 guankaishe
 * Released under the MIT License.
 */
@@ -205,7 +205,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *  Observe initial properties
 	     */
 	    $util.objEach(_initialProps, function (pn, pv) {
-	        _$add(pn, pv)
+	        _$add(pn, pv, true)
 	    })
 	    _initialProps = null
 
@@ -262,15 +262,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    //  local proxy for EventEmitter
 	    function _emitChange(propname/*, arg1, ..., argX*/) {
 	        var args = arguments
-	        var evtArgs = $util.copyArray(args)
 	        var kp = $normalize($join(_rootPath(), propname))
 	        args[0] = CHANGE_EVENT + ':' + kp
 	        _emitter.emit(CHANGE_EVENT, kp)
 	        emitter.emit.apply(emitter, args)
 
-	        evtArgs[0] = kp
-	        evtArgs.unshift('*')
-	        emitter.emit.apply(emitter, evtArgs)
+	        args = $util.copyArray(args)
+	        args[0] = kp
+	        args.unshift('*')
+	        emitter.emit.apply(emitter, args)
 	    }
 	    /**
 	     *  Add dependence to "_cptDepsMapping"
@@ -338,7 +338,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	                var result = nativeMethod.apply(self, args)
 	                // set value directly after walk
 	                _props[name] = _walk(name, self, kp)
-	                _emitChange(name, self, pv)
+	                if (methodName == 'splice') {
+	                    _emitChange(name, self, pv, methodName, args)
+	                } else {
+	                    _emitChange(name, self, pv, methodName)
+	                }
 	                return result
 	            })
 	        }
@@ -455,7 +459,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *  @param prop <String> property name
 	     *  @param value property value
 	     */
-	    function _$add(prop, value) {
+	    function _$add(prop, value, silence) {
 	        if (prop.match(/[\.\[\]]/)) {
 	            throw new Error('Propname shoudn\'t contains "." or "[" or "]"')
 	        }
@@ -476,7 +480,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	        })
 	        // add peroperty will trigger change event
-	        _emitChange(prop, value)
+	        !silence && _emitChange(prop, value)
 	    }
 
 	    /**
@@ -821,8 +825,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this._obs = {}
 	    this._context = context
 	}
-
-	Message.prototype.on = function(sub, cb, scope) {
+	var proto = Message.prototype
+	proto.on = function(sub, cb, scope) {
 	    scope = scope || _scopeDefault
 	    _patch(this._obs, sub, [])
 
@@ -837,7 +841,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 *  @param [cb] <Function> callback, Optional, if callback is not exist,
 	 *      will remove all callback of that sub
 	 */
-	Message.prototype.off = function( /*subject, cb, scope*/ ) {
+	proto.off = function( /*subject, cb, scope*/ ) {
 	    var types
 	    var args = arguments
 	    var len = args.length
@@ -895,7 +899,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    return this
 	}
-	Message.prototype.emit = function(sub) {
+	proto.emit = function(sub) {
 	    var obs = this._obs[sub]
 	    if (!obs) return
 	    var args = [].slice.call(arguments)
@@ -944,13 +948,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return obj
 	}
 	/**
+	 *  Get undefine
+	 */
+	function undf () {
+	    return void(0)
+	}
+	function isNon (o) {
+	    return o === undf || o === null
+	}
+	/**
 	 *  get value of object by keypath
 	 */
 	function _get(obj, keypath) {
 	    var parts = _keyPathNormalize(keypath).split('.')
 	    var dest = obj
 	    parts.forEach(function(key) {
-	        // Still set to non-object, just throw that error
+	        if (isNon(dest)) return !(dest = undf())
 	        dest = dest[key]
 	    })
 	    return dest
@@ -992,18 +1005,34 @@ return /******/ (function(modules) { // webpackBootstrap
 	'use strict';
 
 	var $util = __webpack_require__(6)
-	var hookMethods = ['splice', 'push', 'pop', 'shift', 'unshift', 'reverse']
+	var hookMethods = ['splice', 'push', 'pop', 'shift', 'unshift', 'reverse', 'sort', '$concat']
+	var _push = Array.prototype.push
+	var _slice = Array.prototype.slice
+	var attachMethods = {
+	    '$concat': function () {
+	        var args = _slice.call(arguments)
+	        var arr = this
+	        args.forEach(function (items) {
+	            $util.type(items) == 'array' 
+	                ? items.forEach(function (item) {
+	                        _push.call(arr, item)
+	                    })
+	                : _push.call(arr, items)
+	        })
+	        return arr
+	    }
+	}
 	var hookFlag ='__hook__'
 
 	module.exports = function (arr, hook) {
 	    hookMethods.forEach(function (m) {
-	        if (arr[m][hookFlag]) {
+	        if (arr[m] && arr[m][hookFlag]) {
 	            // reset hook method
 	            arr[m][hookFlag](hook)
 	            return
 	        }
 	        // cached native method
-	        var nativeMethod = arr[m]
+	        var nativeMethod = arr[m] || attachMethods[m]
 	        // method proxy
 	        $util.def(arr, m, {
 	            enumerable: false,
