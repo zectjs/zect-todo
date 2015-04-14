@@ -1,3 +1,5 @@
+'use strict';
+
 var $ = require('./dm')
 var is = require('./is')
 var Mux = require('./mux')
@@ -12,21 +14,17 @@ var AttributeDirective = Compiler.Attribute
 var TextDirective = Compiler.Text
 var ElementDirective = Compiler.Element
 
-var _isExpr = Expression.isExpr
 
 /**
  *  private vars
  */
-var presetDirts = require('./directives')(Zect)  // preset directives getter
+var buildInDirts = require('./directives')(Zect)  // preset directives getter
 var elements = require('./elements')(Zect)      // preset directives getter
-var allDirectives = [presetDirts, {}]                // [preset, global]
+var allDirectives = [buildInDirts, {}]                // [preset, global]
 var gdirs = allDirectives[1]
 var gcomps = {}                                 // global define components
 
-function _funcOrObject(obj, prop) {
-    var tar = obj[prop]
-    return util.type(tar) == 'function' ? tar.call(obj):tar
-}
+var _isExpr = Expression.isExpr
 /**
  *  Global API
  */
@@ -35,14 +33,15 @@ function Zect(options) {
     return ViewModel.call(this, insOpt)
 }
 Zect.extend = function(options) {
-    return function(opt) {
+    function Class(opt) {
         var insOpt = _mergeMethodMixins([options, opt])
         /**
          *  Prototype inherit
          */
-        util.insertProto(this, Zect.prototype)
         return ViewModel.call(this, insOpt)
     }
+    _inherit(Class, Zect)
+    return Class
 }
 Zect.component = function(id, definition) {
     var Comp = Zect.extend(definition)
@@ -56,28 +55,32 @@ Zect.namespace = function(ns) {
     conf.namespace = ns
 }
 
+_inherit(Zect, Compiler)
+
 /*******************************
       ViewModel Constructor
 *******************************/
 function ViewModel(options) {
     // inherit Compiler
-    util.insertProto(this, Compiler.prototype)
-    // inherit Compile
+
     var vm = this
     var el = options.el
     var components = [gcomps, options.components || {}]
     var directives = allDirectives.concat([options.directives || {}])
 
-    var _directives = [] // private refs for all directives instance of the vm    
-    var _components = [] // private refs for all components    
+    var _directives = [] // local refs for all directives instance of the vm    
+    var _components = [] // local refs for all components    
     var NS = conf.namespace
     var componentProps = [NS + 'component', NS + 'data', NS + 'methods']
+    var $childrens = options.$childrens
+
+    // set $parent ref
+    vm.$parent = options.$parent || null
 
     /**
      *  Mounted element detect
      */
     if (el && options.template) {
-        vm.$children = el.childNodes
         el.innerHTML = options.template
     } else if (options.template) {
         el = document.createElement('div')
@@ -87,24 +90,49 @@ function ViewModel(options) {
     } else if (!is.Element(el)) {
         throw new Error('Unmatch el option')
     }
-    // replate template holder DOM
+    // replace "$NS-template" of actual instance's DOM  
     if (el.children.length == 1 && el.firstElementChild.tagName.toLowerCase() == (NS + 'template')) {
         var $holder = el.firstElementChild
-        var $childrens = _slice($holder.childNodes)
+        var childNodes = _slice($holder.childNodes)
         var attributes = _slice($holder.attributes)
 
         el.removeChild($holder)
         /**
          *  Migrate childNodes
          */
-        $childrens.forEach(function (n) {
-            el.appendChild(n)
-        })
+        $(childNodes).appendTo(el)
         /**
          *  Merge attributes
          */
         attributes.forEach(function (att) {
             if (!el.hasAttribute(att.name)) el.setAttribute(att.name, att.value)
+        })
+    }
+    // content insertion
+    var points = _slice(document.querySelectorAll('content'))
+    if (points && $childrens && $childrens.length) {
+        var $con = document.createDocumentFragment()
+        _slice($childrens).forEach(function (n) {
+            $con.appendChild(n)
+        })
+        points.some(function (p) {
+            if (!$childrens || !$childrens.length) return true
+
+            var $p = $(p)
+            var select = $p.attr('select')
+            var tar
+            var ind
+
+            if (select 
+                && (tar = $con.querySelector(select)) 
+                && ~(ind = $childrens.indexOf(tar)) ) {
+
+                $p.replace(tar)
+                $childrens.splice(ind, 1)
+            } else if (!select) {
+                $p.replace($con)
+                $childrens = null
+            }
         })
     }
 
@@ -360,8 +388,8 @@ function ViewModel(options) {
 
         // don't need deep into self
         if (node === parentVM.$el) return
-
-        var ref = $(node).attr('ref')
+        // suport expression, TBD
+        var ref = $(node).attr(NS + 'ref')
         var dAttName = NS + 'data'
         var mAttName = NS + 'methods'
 
@@ -397,7 +425,8 @@ function ViewModel(options) {
             var r = _parseExpr(expr)
             ast[r.name] = r
             ;(r.vars || []).forEach(function (v) {
-                revealAst[v] = r.name
+                !revealAst[v] && (revealAst[v] = [])
+                !~revealAst[v].indexOf(r.name) && revealAst[v].push(r.name)
             })
         }
 
@@ -408,7 +437,8 @@ function ViewModel(options) {
             el: node,
             data: bindingData,
             methods: bindingMethods,
-            $parent: parentVM
+            $parent: parentVM,
+            $childrens: _slice(node.childNodes)
         })
 
         var plainDataExpr = _isDataExpr ? Expression.strip(dataExpr) : ''
@@ -427,10 +457,12 @@ function ViewModel(options) {
         if (_isDataExpr) {
             parentVM.$data.$watch(function (keyPath) {
                 var nextState
-                util.objEach(revealAst, function (varName, bindingName) {
+                util.objEach(revealAst, function (varName, bindingNames) {
                     if (keyPath.indexOf(varName) === 0) {
                         !nextState && (nextState = {})
-                        nextState[bindingName] = execute(parentVM, scope, ast[bindingName].expr)
+                        bindingNames.forEach(function (n) {
+                            nextState[n] = execute(parentVM, scope, ast[n].expr)
+                        })
                     }
                 })
                 nextState && compVM.$set(nextState)
@@ -508,6 +540,9 @@ function ViewModel(options) {
                         Expression.strip(expr)
                                 .split(sep)
                                 .forEach(function(item) {
+                                    // discard empty expression 
+                                    if (!item.trim()) return
+                                    
                                     d = new Directive(vm, scope, node, def, dname, '{' + item + '}')
                                     _directives.push(d)
                                     _setBindings2Scope(scope, d)
@@ -542,13 +577,23 @@ function ViewModel(options) {
 }
 
 /**
- *  Interal functions
+ *  private functions
  */
 function _slice (obj) {
+    if (!obj) return obj
     return [].slice.call(obj)
+}
+function _funcOrObject(obj, prop) {
+    var tar = obj[prop]
+    return util.type(tar) == 'function' ? tar.call(obj):tar
 }
 function _extend (args) {
     return util.extend.apply(util, args)
+}
+function _inherit (Ctor, Parent) {
+    var proto = Ctor.prototype
+    Ctor.prototype = Object.create(Parent.prototype)
+    return proto
 }
 function _mergeOptions (opts) {
     var dest = {}

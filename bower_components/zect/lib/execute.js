@@ -1,5 +1,8 @@
-var util = require('./util')
+/**
+ *  execute expression from template with specified Scope and ViewModel
+ */
 
+var util = require('./util')
 /**
  *  Calc expression value
  */
@@ -16,19 +19,20 @@ function _execute($vm, $scope/*, expression, [label], [target]*/) {
     try {
         return util.immutable(eval('with($scope){(%s)}'.replace('%s', arguments[2])))
     } catch (e) {
-        var expr = '. {' + arguments[2] + '}'
-        var label = arguments[3]
-        var target = arguments[4]
+        arguments[2] = /^\{/.test(arguments[2]) 
+                        ? '. ' + arguments[2]
+                        : '. {' + arguments[2] + '}' // expr
+        // arguments[3] // label
+        // arguments[4] // target
         switch (e.name) {
             case 'ReferenceError':
-                console.warn(e.message + expr)
+                console.warn(e.message + arguments[2])
                 break
             default:
                 console.error(
-                     (label ? '\'' + label + '\': ' : ''),
-                    e.message +
-                    expr,
-                    target || ''
+                     (arguments[3] ? '\'' + arguments[3] + '\': ' : ''),
+                    e.message + arguments[2],
+                    arguments[4] || ''
                 )
         }
         return ''

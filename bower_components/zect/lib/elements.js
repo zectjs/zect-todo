@@ -1,5 +1,5 @@
 /**
- *  Preset Global Custom-Elements
+ *  Build-in Global Custom-Elements
  */
 
 'use strict';
@@ -7,11 +7,12 @@
 var $ = require('./dm')
 var conf = require('./conf')
 var util = require('./util')
+var Scope = require('./scope')
+var Expression = require('./expression')
 
 function _getData (data) {
     return util.type(data) == 'object' ? util.copyObject(data) : {}
 }
-
 module.exports = function(Zect) {
     return {
         'if': {
@@ -59,21 +60,14 @@ module.exports = function(Zect) {
                     this.compiled = true
 
                     var $parent = this.$scope || {}
-                    var $scope = {
-                        data: $parent.data, // inherit parent scope's properties
-                        bindings: [],
-                        children: [],
-                        $parent: $parent
-                    }
-                    var that = this
+                    // inherit parent scope's properties
+                    var $scope = new Scope($parent.data, $parent)
+                    var protoUpdate = $scope.$update
                     $scope.$update = function () {
+                        // the "if" element is sharing with $scope.data, 
+                        // so it need to be updated
                         $scope.data = $parent.data
-                        this.bindings.forEach(function (bd) {
-                            bd.$update()
-                        })
-                        this.children.forEach(function (child) {
-                            child.$update()
-                        })
+                        protoUpdate.apply($scope, arguments)
                     }
                     var $update = this.$update
 
@@ -97,6 +91,8 @@ module.exports = function(Zect) {
                 if (!this.child) {
                     return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node. {' + expr + '}')
                 }
+                // if use filter, Zect can't patch array by array-method
+                this._noArrayFilter = Expression.notFunctionCall(expr)
             },
             delta: function (nv, pv, kp) {
                 if (kp && /\d+/.test(kp.split('.')[1])) {
@@ -128,8 +124,11 @@ module.exports = function(Zect) {
                 if (!items || !items.forEach) {
                     return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
                 }
-
                 var that = this
+
+                /**
+                 *  create a sub-vm for array item with specified index
+                 */
                 function createSubVM(item, index) {
                     var subEl = that.child.cloneNode(true)
                     var data = _getData(item)
@@ -137,23 +136,9 @@ module.exports = function(Zect) {
                     data.$index = index
                     data.$value = item
 
-                    var hasParentScope = !!that.$scope
-
-                    var $scope = {
-                        data: data,
-                        bindings: [], // collect all bindings
-                        children: [],
-                        $parent: that.$scope || {}
-                    }
-                    $scope.$update = function () {
-                        this.bindings.forEach(function (bd) {
-                            bd.$update()
-                        })
-                        this.children.forEach(function (child) {
-                            child.$update()
-                        })
-                    }
-
+                    var $scope = new Scope(data, that.$scope)
+                    // this.$scope is a parent scope, 
+                    // on the top of current scope
                     if(that.$scope) {
                         that.$scope.children.push($scope)
                     }
@@ -179,34 +164,48 @@ module.exports = function(Zect) {
                     vm.$scope.$update()
                 }
 
+                // it's not modify
+                if (method == 'splice' && args.length == 2 && (!args[1] || args[1] < 0)) return
+
                 var $floor = this.$floor()
                 var $ceil = this.$ceil()
-                var vm
-                var done
-                switch (method) {
-                    case 'splice':
-                        args = [].slice.call(args)
+                var arrayPatcher = {
+                    splice: function () {
                         var ind = Number(args[0] || 0)
                         var len = Number(args[1] || 0)
                         var max = this.$vms.length
                         ind = ind > max ? max : ind
-                        // has not modify
-                        if (args.length == 2 && !len) return
-                        else if (args.length > 2) {
-                            // insert
-                            var insertVms = args.slice(2).map(function (item, index) {
-                                return createSubVM(item, start + index)
+                        if (args.length > 2) {
+                            /**
+                             *  Insert
+                             */
+                            // create vms for each inserted item
+                            var insertVms = [].slice.call(args, 2).map(function (item, index) {
+                                return createSubVM(item, ind + index)
                             })
-                            var start = ind + insertVms.length
-
+                            // insert items into current $vms
                             this.$vms.splice.apply(this.$vms, [ind, len].concat(insertVms))
+
+                            // element bound for inserted item vm element
+                            $(insertVms.map(function (vm) {
+                                return vm.$compiler.$bundle()
+                            })).insertAfter(
+                                ind == 0 
+                                ? $ceil
+                                : this.$vms[ind - 1].$compiler.$bundle()
+                            )
+                            // get last update index
+                            var start = ind + insertVms.length
                             this.$vms.forEach(function (vm, i) {
                                 if (i >= start) {
                                     updateVMIndex(vm, i)
                                 }
                             })
+
                         } else {
-                            // remove
+                            /**
+                             *  remove
+                             */
                             this.$vms.splice
                                      .apply(this.$vms, args)
                                      .forEach(function (vm, i) {
@@ -219,30 +218,26 @@ module.exports = function(Zect) {
                                 }
                             })
                         }
-                        done = 1
-                        break
-                    case 'push':
+                    },
+                    push: function () {
                         var index = items.length - 1
-                        vm = createSubVM(items[index], index)
+                        var vm = createSubVM(items[index], index)
                         this.$vms.push(vm)
                         vm.$compiler.$insertBefore($floor)
-                        done = 1
-                        break
-                    case 'pop':
-                        vm = this.$vms.pop()
+                    },
+                    pop: function () {
+                        var vm = this.$vms.pop()
                         destroyVM(vm)
-                        done = 1
-                        break
-                    case 'shift':
-                        vm = this.$vms.shift()
+                    },
+                    shift: function () {
+                        var vm = this.$vms.shift()
                         destroyVM(vm)
                         this.$vms.forEach(function (v, i) {
                             updateVMIndex(v, i)
                         })
-                        done = 1
-                        break
-                    case 'unshift':
-                        vm = createSubVM(items[0], 0)
+                    },
+                    unshift: function () {
+                        var vm = createSubVM(items[0], 0)
                         this.$vms.unshift(vm)
                         vm.$compiler.$insertAfter($ceil)
                         this.$vms.forEach(function (v, i) {
@@ -250,21 +245,20 @@ module.exports = function(Zect) {
                                 updateVMIndex(v, i)
                             }
                         })
-                        done = 1
-                        break
-                    case '$concat':
-                        var srcLen = this.$vms.length
-                        var fragment = document.createDocumentFragment()
-                        items.slice(srcLen).forEach(function (item, i) {
-                            var vm = createSubVM(item, i + srcLen)
-                            this.$vms.push(vm)
-                            fragment.appendChild(vm.$compiler.$bundle())
-                        }.bind(this))
-                        $floor.parentNode.insertBefore(fragment, $floor)
-                        done = 1
-                        break
+                    },
+                    concat: function () {
+                        var len = this.$vms.length
+                        $(items.slice(len).map(function (item, i) {
+                            var vm = createSubVM(item, i + len)
+                            that.$vms.push(vm)
+                            return vm.$compiler.$bundle()
+                        })).insertBefore($floor)
+                    }
                 }
-                if (done) {
+
+                var patch = arrayPatcher[method]
+                if (this._noArrayFilter && patch) {
+                    patch.call(this)
                     this.last = util.copyArray(items)
                     return
                 }

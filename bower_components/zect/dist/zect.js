@@ -1,5 +1,5 @@
 /**
-* Zect v0.0.1
+* Zect v1.1.7
 * (c) 2015 guankaishe
 * Released under the MIT License.
 */
@@ -65,6 +65,8 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 1 */
 /***/ function(module, exports, __webpack_require__) {
 
+	'use strict';
+
 	var $ = __webpack_require__(2)
 	var is = __webpack_require__(3)
 	var Mux = __webpack_require__(4)
@@ -79,21 +81,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	var TextDirective = Compiler.Text
 	var ElementDirective = Compiler.Element
 
-	var _isExpr = Expression.isExpr
 
 	/**
 	 *  private vars
 	 */
-	var presetDirts = __webpack_require__(10)(Zect)  // preset directives getter
+	var buildInDirts = __webpack_require__(10)(Zect)  // preset directives getter
 	var elements = __webpack_require__(11)(Zect)      // preset directives getter
-	var allDirectives = [presetDirts, {}]                // [preset, global]
+	var allDirectives = [buildInDirts, {}]                // [preset, global]
 	var gdirs = allDirectives[1]
 	var gcomps = {}                                 // global define components
 
-	function _funcOrObject(obj, prop) {
-	    var tar = obj[prop]
-	    return util.type(tar) == 'function' ? tar.call(obj):tar
-	}
+	var _isExpr = Expression.isExpr
 	/**
 	 *  Global API
 	 */
@@ -102,14 +100,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return ViewModel.call(this, insOpt)
 	}
 	Zect.extend = function(options) {
-	    return function(opt) {
+	    function Class(opt) {
 	        var insOpt = _mergeMethodMixins([options, opt])
 	        /**
 	         *  Prototype inherit
 	         */
-	        util.insertProto(this, Zect.prototype)
 	        return ViewModel.call(this, insOpt)
 	    }
+	    _inherit(Class, Zect)
+	    return Class
 	}
 	Zect.component = function(id, definition) {
 	    var Comp = Zect.extend(definition)
@@ -123,28 +122,32 @@ return /******/ (function(modules) { // webpackBootstrap
 	    conf.namespace = ns
 	}
 
+	_inherit(Zect, Compiler)
+
 	/*******************************
 	      ViewModel Constructor
 	*******************************/
 	function ViewModel(options) {
 	    // inherit Compiler
-	    util.insertProto(this, Compiler.prototype)
-	    // inherit Compile
+
 	    var vm = this
 	    var el = options.el
 	    var components = [gcomps, options.components || {}]
 	    var directives = allDirectives.concat([options.directives || {}])
 
-	    var _directives = [] // private refs for all directives instance of the vm    
-	    var _components = [] // private refs for all components    
+	    var _directives = [] // local refs for all directives instance of the vm    
+	    var _components = [] // local refs for all components    
 	    var NS = conf.namespace
 	    var componentProps = [NS + 'component', NS + 'data', NS + 'methods']
+	    var $childrens = options.$childrens
+
+	    // set $parent ref
+	    vm.$parent = options.$parent || null
 
 	    /**
 	     *  Mounted element detect
 	     */
 	    if (el && options.template) {
-	        vm.$children = el.childNodes
 	        el.innerHTML = options.template
 	    } else if (options.template) {
 	        el = document.createElement('div')
@@ -154,24 +157,49 @@ return /******/ (function(modules) { // webpackBootstrap
 	    } else if (!is.Element(el)) {
 	        throw new Error('Unmatch el option')
 	    }
-	    // replate template holder DOM
+	    // replace "$NS-template" of actual instance's DOM  
 	    if (el.children.length == 1 && el.firstElementChild.tagName.toLowerCase() == (NS + 'template')) {
 	        var $holder = el.firstElementChild
-	        var $childrens = _slice($holder.childNodes)
+	        var childNodes = _slice($holder.childNodes)
 	        var attributes = _slice($holder.attributes)
 
 	        el.removeChild($holder)
 	        /**
 	         *  Migrate childNodes
 	         */
-	        $childrens.forEach(function (n) {
-	            el.appendChild(n)
-	        })
+	        $(childNodes).appendTo(el)
 	        /**
 	         *  Merge attributes
 	         */
 	        attributes.forEach(function (att) {
 	            if (!el.hasAttribute(att.name)) el.setAttribute(att.name, att.value)
+	        })
+	    }
+	    // content insertion
+	    var points = _slice(document.querySelectorAll('content'))
+	    if (points && $childrens && $childrens.length) {
+	        var $con = document.createDocumentFragment()
+	        _slice($childrens).forEach(function (n) {
+	            $con.appendChild(n)
+	        })
+	        points.some(function (p) {
+	            if (!$childrens || !$childrens.length) return true
+
+	            var $p = $(p)
+	            var select = $p.attr('select')
+	            var tar
+	            var ind
+
+	            if (select 
+	                && (tar = $con.querySelector(select)) 
+	                && ~(ind = $childrens.indexOf(tar)) ) {
+
+	                $p.replace(tar)
+	                $childrens.splice(ind, 1)
+	            } else if (!select) {
+	                $p.replace($con)
+	                $childrens = null
+	            }
 	        })
 	    }
 
@@ -427,8 +455,8 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	        // don't need deep into self
 	        if (node === parentVM.$el) return
-
-	        var ref = $(node).attr('ref')
+	        // suport expression, TBD
+	        var ref = $(node).attr(NS + 'ref')
 	        var dAttName = NS + 'data'
 	        var mAttName = NS + 'methods'
 
@@ -464,7 +492,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var r = _parseExpr(expr)
 	            ast[r.name] = r
 	            ;(r.vars || []).forEach(function (v) {
-	                revealAst[v] = r.name
+	                !revealAst[v] && (revealAst[v] = [])
+	                !~revealAst[v].indexOf(r.name) && revealAst[v].push(r.name)
 	            })
 	        }
 
@@ -475,7 +504,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	            el: node,
 	            data: bindingData,
 	            methods: bindingMethods,
-	            $parent: parentVM
+	            $parent: parentVM,
+	            $childrens: _slice(node.childNodes)
 	        })
 
 	        var plainDataExpr = _isDataExpr ? Expression.strip(dataExpr) : ''
@@ -494,10 +524,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (_isDataExpr) {
 	            parentVM.$data.$watch(function (keyPath) {
 	                var nextState
-	                util.objEach(revealAst, function (varName, bindingName) {
+	                util.objEach(revealAst, function (varName, bindingNames) {
 	                    if (keyPath.indexOf(varName) === 0) {
 	                        !nextState && (nextState = {})
-	                        nextState[bindingName] = execute(parentVM, scope, ast[bindingName].expr)
+	                        bindingNames.forEach(function (n) {
+	                            nextState[n] = execute(parentVM, scope, ast[n].expr)
+	                        })
 	                    }
 	                })
 	                nextState && compVM.$set(nextState)
@@ -575,6 +607,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        Expression.strip(expr)
 	                                .split(sep)
 	                                .forEach(function(item) {
+	                                    // discard empty expression 
+	                                    if (!item.trim()) return
+	                                    
 	                                    d = new Directive(vm, scope, node, def, dname, '{' + item + '}')
 	                                    _directives.push(d)
 	                                    _setBindings2Scope(scope, d)
@@ -609,13 +644,23 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	/**
-	 *  Interal functions
+	 *  private functions
 	 */
 	function _slice (obj) {
+	    if (!obj) return obj
 	    return [].slice.call(obj)
+	}
+	function _funcOrObject(obj, prop) {
+	    var tar = obj[prop]
+	    return util.type(tar) == 'function' ? tar.call(obj):tar
 	}
 	function _extend (args) {
 	    return util.extend.apply(util, args)
+	}
+	function _inherit (Ctor, Parent) {
+	    var proto = Ctor.prototype
+	    Ctor.prototype = Object.create(Parent.prototype)
+	    return proto
 	}
 	function _mergeOptions (opts) {
 	    var dest = {}
@@ -674,15 +719,14 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	function Selector(sel) {
 	    if (util.type(sel) == 'string') {
-	        var nodes = util.copyArray(document.querySelectorAll(sel))
-	        return Shell(nodes)
+	        return Shell(util.copyArray(document.querySelectorAll(sel)))
 	    }
 	    else if (util.type(sel) == 'array') {
 	        return Shell(sel)
 	    }
 	    else if (sel instanceof Shell) return sel
 	    else if (is.DOM(sel)) {
-	        return Shell([sel])
+	        return Shell(new ElementArray(sel))
 	    }
 	    else {
 	        throw new Error('Unexpect selector !')
@@ -691,102 +735,176 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	function Shell(nodes) {
 	    if (nodes instanceof Shell) return nodes
-	    nodes.__proto__ = proto
-	    return nodes
+	    var $items = new ElementArray()
+	    nodes.forEach(function (item) {
+	        $items.push(item)
+	    })
+	    return $items
 	}
 
-	var proto = {
-	    find: function(sel) {
-	        var subs = []
-	        this.forEach(function(n) {
-	            subs = subs.concat(util.copyArray(n.querySelectorAll(sel)))
-	        })
-	        return Shell(subs)
-	    },
-	    attr: function(attname, attvalue) {
-	        var len = arguments.length
-	        var el = this[0]
-	        if (len > 1) {
-	            el.setAttribute(attname, attvalue)
-	        } else if (len == 1) {
-	            return (el.getAttribute(attname) || '').toString()
-	        }
-	        return this
-	    },
-	    removeAttr: function(attname) {
+	function ElementArray () {
+	    this.push = function () {
+	        Array.prototype.push.apply(this, arguments)
+	    }
+	    this.forEach = function () {
+	        Array.prototype.forEach.apply(this, arguments)
+	    }
+	    this.push.apply(this, arguments)
+	}
+
+	ElementArray.prototype = Object.create(Shell.prototype)
+
+	var proto = Shell.prototype
+	proto.find = function(sel) {
+	    var subs = []
+	    this.forEach(function(n) {
+	        subs = subs.concat(util.copyArray(n.querySelectorAll(sel)))
+	    })
+	    return Shell(subs)
+	}
+	proto.attr = function(attname, attvalue) {
+	    var len = arguments.length
+	    var el = this[0]
+
+	    if (len > 1) {
+	        el.setAttribute(attname, attvalue)
+	    } else if (len == 1) {
+	        return (el.getAttribute(attname) || '').toString()
+	    }
+	    return this
+	}
+	proto.removeAttr = function(attname) {
+	    this.forEach(function(el) {
+	        el.removeAttribute(attname)
+	    })
+	    return this
+	}
+	proto.addClass = function(clazz) {
+	    this.forEach(function(el) {
+
+	        // IE9 below not support classList
+	        // el.classList.add(clazz)
+
+	        var classList = el.className.split(' ')
+	        if (!~classList.indexOf(clazz)) classList.push(clazz)
+	        el.className = classList.join(' ')
+	    })
+	    return this
+	}
+	proto.removeClass = function(clazz) {
+	    this.forEach(function(el) {
+	        
+	        // IE9 below not support classList
+	        // el.classList.remove(clazz)
+
+	        var classList = el.className.split(' ')
+	        var index = classList.indexOf(clazz)
+	        if (~index) classList.splice(index, 1)
+	        el.className = classList.join(' ')
+	    })
+	    return this
+	}
+	proto.each = function(fn) {
+	    this.forEach(fn)
+	    return this
+	}
+	proto.on = function(type, listener, capture) {
+	    this.forEach(function(el) {
+	        el.addEventListener(type, listener, capture)
+	    })
+	    return this
+	}
+	proto.off = function(type, listener) {
+	    this.forEach(function(el) {
+	        el.removeEventListener(type, listener)
+	    })
+	    return this
+	}
+	proto.html = function(html) {
+	    var len = arguments.length
+	    if (len >= 1) {
 	        this.forEach(function(el) {
-	            el.removeAttribute(attname)
+	            el.innerHTML = html
 	        })
-	        return this
-	    },
-	    addClass: function(clazz) {
-	        this.forEach(function(el) {
-	            el.classList.add(clazz)
+	    } else if (this.length) {
+	        return this[0].innerHTML
+	    }
+	    return this
+	}
+	proto.parent = function() {
+	    if (!this.length) return null
+	    return Shell([_parentNode(this[0])])
+	}
+	proto.remove = function() {
+	    this.forEach(function(el) {
+	        var parent = _parentNode(el)
+	        parent && parent.removeChild(el)
+	    })
+	    return this
+	}
+	proto.insertBefore = function (pos) {
+	    var tar
+	    if (!this.length) return this
+	    else if (this.length == 1) {
+	        tar = this[0]
+	    } else {
+	        tar = _createDocumentFragment()
+	        this.forEach(function (el) {
+	            _appendChild(tar, el)
 	        })
-	        return this
-	    },
-	    removeClass: function(clazz) {
-	        this.forEach(function(el) {
-	            el.classList.remove(clazz)
+	    }
+	    _parentNode(pos).insertBefore(tar, pos)
+	    return this
+	}
+	proto.insertAfter = function (pos) {
+	    var tar
+	    if (!this.length) return this
+	    else if (this.length == 1) {
+	        tar = this[0]
+	    } else {
+	        tar = _createDocumentFragment()
+	        this.forEach(function (el) {
+	            _appendChild(tar, el)
 	        })
-	        return this
-	    },
-	    each: function(fn) {
-	        this.forEach(fn)
-	        return this
-	    },
-	    on: function(type, listener, capture) {
-	        this.forEach(function(el) {
-	            el.addEventListener(type, listener, capture)
+	    }
+	    _parentNode(pos).insertBefore(tar, pos.nextSibling)
+	    return this
+	}
+	// return element by index
+	proto.get = function(i) {
+	    return this[i]
+	}
+	proto.append = function(n) {
+	    if (this.length) _appendChild(this[0], n)
+	    return this
+	}
+	proto.appendTo = function (p) {
+	    if (this.length == 1) _appendChild(p, this[0])
+	    else if (this.length > 1) {
+	        var f = _createDocumentFragment()
+	        this.forEach(function (n) {
+	            _appendChild(f, n)
 	        })
-	        return this
-	    },
-	    off: function(type, listener) {
-	        this.forEach(function(el) {
-	            el.removeEventListener(type, listener)
-	        })
-	        return this
-	    },
-	    html: function(html) {
-	        var len = arguments.length
-	        if (len >= 1) {
-	            this.forEach(function(el) {
-	                el.innerHTML = html
-	            })
-	        } else if (this.length) {
-	            return this[0].innerHTML
-	        }
-	        return this
-	    },
-	    parent: function() {
-	        if (!this.length) return null
-	        return Shell([this[0].parentNode])
-	    },
-	    remove: function() {
-	        this.forEach(function(el) {
-	            var parent = el.parentNode
-	            parent && parent.removeChild(el)
-	        })
-	        return this
-	    },
-	    // return element by index
-	    get: function(i) {
-	        return this[i]
-	    },
-	    append: function(n) {
-	        if (this.length) this.get(0).appendChild(n)
-	        return this
-	    },
-	    replace: function(n) {
-	        var tar = this.get(0)
-	        tar.parentNode.replaceChild(n, tar)
-	        return this
+	        _appendChild(p, f)
 	    }
 	}
-	proto.__proto__ = Shell.prototype
-	proto.__proto__.__proto__ = Array.prototype
+	proto.replace = function(n) {
+	    var tar = this[0]
+	    _parentNode(tar).replaceChild(n, tar)
+	    return this
+	}
 
+	function _parentNode (e) {
+	    return e.parentNode
+	}
 
+	function _createDocumentFragment () {
+	    return document.createDocumentFragment()
+	}
+
+	function _appendChild (p, c) {
+	    return p.appendChild(c)
+	}
 	module.exports = Selector
 
 
@@ -796,13 +914,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	'use strict';
 	var conf = __webpack_require__(6)
-
 	module.exports = {
 	    Element: function(el) {
 	        return el instanceof HTMLElement || el instanceof DocumentFragment
 	    },
 	    DOM: function (el) {
-	        return el instanceof HTMLElement || el instanceof DocumentFragment || el instanceof Comment
+	        return this.Element(el) || el instanceof Comment
 	    },
 	    IfElement: function(tn) {
 	        return tn == (conf.namespace + 'if').toUpperCase()
@@ -817,7 +934,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
-	* Mux.js v2.4.9
+	* Mux.js v2.4.13
 	* (c) 2014 guankaishe
 	* Released under the MIT License.
 	*/
@@ -956,6 +1073,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		 *  Expose Keypath API
 		 */
 		Mux.keyPath = $keypath
+		Mux.utils = $util
 
 		/**
 		 *  Mux model factory
@@ -963,10 +1081,11 @@ return /******/ (function(modules) { // webpackBootstrap
 		 */
 		function MuxFactory(options) {
 
-		    return function (receiveProps) {
-		        if (!instanceOf(this, Mux)) $util.insertProto(this, Mux.prototype)
+		    function Class (receiveProps) {
 		        Ctor.call(this, options, receiveProps)
 		    }
+		    Class.prototype = Object.create(Mux.prototype)
+		    return Class
 		}
 		/**
 		 *  Mux's model class, could instance with "new" operator or call it directly.
@@ -981,19 +1100,27 @@ return /******/ (function(modules) { // webpackBootstrap
 		    var __muxid__ = allotId()
 		    var _isExternalEmitter =  !!options.emitter
 		    var _isExternalPrivateEmitter =  !!options._emitter
-		    var proto = {
-		        '__muxid__': __muxid__,
-		        '__kp__': __kp__
-		    }
 		    var _destroy // interanl destroyed flag
+		    var _priavateProperties = {}
 
-
-		    $util.insertProto(model, proto)
+		    _defProvateProperty('__muxid__', __muxid__)
+		    _defProvateProperty('__kp__', __kp__)
 		    /**
 		     *  return current keypath prefix of this model
 		     */
 		    function _rootPath () {
 		        return __kp__ || ''
+		    }
+
+		    /**
+		     *  define priavate property of the instance object
+		     */
+		    function _defProvateProperty(name, value) {
+		        _priavateProperties[name] = value
+		        $util.def(model, name, {
+		            enumerable: false,
+		            value: value
+		        })
 		    }
 
 		    var getter = options.props
@@ -1350,7 +1477,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		        _emitChange(propname, dest.cur)
 		    }
 
-		     /*******************************
+		    /*******************************
 		               define instantiation's methods
 		     *******************************/
 		    /**
@@ -1362,7 +1489,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		     *  ------------------------
 		     *  @param propsObj <Object>
 		     */
-		    proto.$add = function(/* [propname [, defaultValue]] | propnameArray | propsObj */) {
+		    _defProvateProperty('$add', function(/* [propname [, defaultValue]] | propnameArray | propsObj */) {
 		        var args = arguments
 		        var first = args[0]
 		        var pn, pv
@@ -1401,17 +1528,17 @@ return /******/ (function(modules) { // webpackBootstrap
 		                $warn('Unexpect params')
 		        }
 		        return this
-		    }
-		        /**
-		         *  define computed prop/props
-		         *  @param propname <String> property name
-		         *  @param deps <Array> computed property dependencies
-		         *  @param fn <Function> computed property getter
-		         *  @param enumerable <Boolean> Optional, whether property enumerable or not
-		         *  --------------------------------------------------
-		         *  @param propsObj <Object> define multiple properties
-		         */
-		    proto.$computed = function (propname, deps, getFn, setFn, enumerable/* | [propsObj]*/) {
+		    })
+		    /**
+		     *  define computed prop/props
+		     *  @param propname <String> property name
+		     *  @param deps <Array> computed property dependencies
+		     *  @param fn <Function> computed property getter
+		     *  @param enumerable <Boolean> Optional, whether property enumerable or not
+		     *  --------------------------------------------------
+		     *  @param propsObj <Object> define multiple properties
+		     */
+		    _defProvateProperty('$computed', function (propname, deps, getFn, setFn, enumerable/* | [propsObj]*/) {
 		        if ($type(propname) == STRING) {
 		            _$computed.apply(null, arguments)
 		        } else if ($type(propname) == OBJECT) {
@@ -1422,7 +1549,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		            $warn('$computed params show be "(String, Array, Function, Function)" or "(Object)"')
 		        }
 		        return this
-		    }
+		    })
 		    /**
 		     *  subscribe prop change
 		     *  change prop/props value, it will be trigger change event
@@ -1430,7 +1557,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		     *  ---------------------
 		     *  @param kpMap <Object>
 		     */
-		    proto.$set = function( /*[kp, value] | [kpMap]*/ ) {
+		    _defProvateProperty('$set', function( /*[kp, value] | [kpMap]*/ ) {
 
 		        var args = arguments
 		        var len = args.length
@@ -1443,14 +1570,14 @@ return /******/ (function(modules) { // webpackBootstrap
 		        }
 
 		        return this
-		    }
+		    })
 
 		    /**
 		     *  Get property value by name, using for get value of computed property without cached
 		     *  change prop/props value, it will be trigger change event
 		     *  @param kp <String> keyPath
 		     */
-		    proto.$get = function(kp) {
+		    _defProvateProperty('$get', function(kp) {
 		        if ($indexOf(_observableKeys, kp)) 
 		            return _props[kp]
 		        else if ($indexOf(_computedKeys, kp)) {
@@ -1465,14 +1592,14 @@ return /******/ (function(modules) { // webpackBootstrap
 		                return $keypath.get(_props, normalKP)
 		            }
 		        }
-		    }
+		    })
 		    /**
 		     *  if params is (key, callback), add callback to key's subscription
 		     *  if params is (callback), subscribe any prop change events of this model
 		     *  @param key <String> optional
 		     *  @param callback <Function>
 		     */
-		    proto.$watch =  function( /*[key, ]callback*/ ) {
+		    _defProvateProperty('$watch', function( /*[key, ]callback*/ ) {
 		        var args = arguments
 		        var len = args.length
 		        var first = args[0]
@@ -1493,7 +1620,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		        return function() {
 		            that.$unwatch.apply(that, args)
 		        }
-		    }
+		    })
 		    /**
 		     *  unsubscribe prop change
 		     *  if params is (key, callback), remove callback from key's subscription
@@ -1502,7 +1629,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		     *  @param key <String>
 		     *  @param callback <Function>
 		     */
-		    proto.$unwatch = function( /*[key, ] [callback] */ ) {
+		    _defProvateProperty('$unwatch', function( /*[key, ] [callback] */ ) {
 		        var args = arguments
 		        var len = args.length
 		        var first = args[0]
@@ -1530,42 +1657,45 @@ return /******/ (function(modules) { // webpackBootstrap
 		            emitter.off.apply(emitter, params)
 		        }
 		        return this
-		    }
+		    })
 		    /**
 		     *  Return all properties without computed properties
 		     *  @return <Object>
 		     */
-		    proto.$props = function() {
+		    _defProvateProperty('$props', function() {
 		        return $util.copyObject(_props)
-		    }
+		    })
 		    /**
 		     *  Reset event emitter
 		     *  @param em <Object> emitter
 		     */
-		    proto.$emitter = function (em, _pem) {
+		    _defProvateProperty('$emitter', function (em, _pem) {
 		        // return emitter instance if args is empty, 
 		        // for share some emitter with other instance
 		        if (arguments.length == 0) return emitter
 		        emitter = em
 		        _walkResetEmiter(this.$props(), em, _pem)
 		        return this
-		    }
+		    })
 		    /**
 		     *  set emitter directly
 		     */
-		    proto._$emitter = function (em) {
+		    _defProvateProperty('_$emitter', function (em) {
 		        emitter = em
-		    }
+		    })
 		    /**
 		     *  set private emitter directly
 		     */
-		    proto._$_emitter = function (em) {
+		    _defProvateProperty('_$_emitter', function (em) {
 		        instanceOf(em, $Message) && (_emitter = em)
-		    }
-		    proto.$destroy = function () {
+		    })
+		    /**
+		     *  Call destroy will release all private properties and variables
+		     */
+		    _defProvateProperty('$destroy', function () {
 		        // clean up all proto methods
-		        $util.objEach(proto, function (k, v) {
-		            if ($type(v) == FUNCTION && k != '$destroyed') proto[k] = _destroyNotice
+		        $util.objEach(_priavateProperties, function (k, v) {
+		            if ($type(v) == FUNCTION && k != '$destroyed') _priavateProperties[k] = _destroyNotice
 		        })
 
 		        if (!_isExternalEmitter) emitter.off()
@@ -1585,10 +1715,13 @@ return /******/ (function(modules) { // webpackBootstrap
 
 		        // destroy external flag
 		        _destroy = true
-		    }
-		    proto.$destroyed = function () {
+		    })
+		    /**
+		     *  This method is used to check the instance is destroyed or not
+		     */
+		    _defProvateProperty('$destroyed', function () {
 		        return _destroy
-		    }
+		    })
 		    /**
 		     *  A shortcut of $set(props) while instancing
 		     */
@@ -1906,7 +2039,7 @@ return /******/ (function(modules) { // webpackBootstrap
 		        if (!obj) return
 		        for(var key in obj) {
 		            if (hasOwn(obj, key)) {
-		                fn(key, obj[key])
+		                if(fn(key, obj[key]) === false) break
 		            }
 		        }
 		    },
@@ -1960,11 +2093,6 @@ return /******/ (function(modules) { // webpackBootstrap
 		            default: return v
 		        }
 		    },
-		    insertProto: function (obj, proto) {
-		        var end = obj.__proto__
-		        obj.__proto__ = proto
-		        obj.__proto__.__proto__ = end
-		    },
 		    def: function () {
 		        return Object.defineProperty.apply(Object, arguments)
 		    },
@@ -1993,6 +2121,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	'use strict';
 
 	var Mux = __webpack_require__(4)
+	var mUtils = Mux.utils
 	var _normalize = Mux.keyPath.normalize
 	var _digest = Mux.keyPath.digest
 
@@ -2011,38 +2140,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	var escapeRex = new RegExp(_keys(escapeCharMap).join('|'), 'g')
 
 	module.exports = {
-	    type: function(obj) {
-	        return /\[object (\w+)\]/.exec(Object.prototype.toString.call(obj))[1].toLowerCase()
-	    },
-	    copyArray: function(a) {
-	        var l = a.length
-	        var n = new Array(l)
-	        while (l--) {
-	            n[l] = a[l]
-	        }
-	        return n
-	    },
-	    copyObject: function(o) {
-	        var n = {}
-	        this.objEach(o, function (k, v) {
-	            n[k] = v
-	        })
-	        return n
-	    },
-	    objEach: function(obj, fn) {
-	        if (!obj) return
-	        for (var key in obj) {
-	            if (obj.hasOwnProperty(key)) {
-	                if(fn(key, obj[key]) === false) break
-	            }
-	        }
-	    },
-	    merge: function (src, dest) {
-	        this.objEach(dest, function (key, value) {
-	            src[key] = value
-	        })
-	        return src
-	    },
+	    type: mUtils.type,
+	    diff: mUtils.diff,
+	    merge: mUtils.merge,
+	    objEach: mUtils.objEach,
+	    copyArray: mUtils.copyArray,
+	    copyObject: mUtils.copyObject,
+	    
 	    extend: function(obj) {
 	        if (this.type(obj) != 'object') return obj;
 	        var source, prop;
@@ -2053,34 +2157,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	        }
 	        return obj;
-	    },
-	    /**
-	     *  two level diff
-	     */
-	    diff: function(next, pre, _t) {
-	        var that = this
-	        // defult max 4 level        
-	        _t = _t == undefined ? 4 : _t
-
-	        if (_t <= 0) return next !== pre
-
-	        if (this.type(next) == 'array' && this.type(pre) == 'array') {
-	            if (next.length !== pre.length) return true
-	            return next.some(function(item, index) {
-	                return that.diff(item, pre[index], _t - 1)
-	            })
-	        } else if (this.type(next) == 'object' && this.type(pre) == 'object') {
-	            var nkeys = _keys(next)
-	            var pkeys = _keys(pre)
-	            if (nkeys.length != pkeys.length) return true
-
-	            var that = this
-	            return nkeys.some(function(k) {
-	                return (!~pkeys.indexOf(k)) || that.diff(next[k], pre[k], _t - 1)
-	            })
-	        }
-
-	        return next !== pre
 	    },
 	    valueDiff: function(next, pre) {
 	        return next !== pre || next instanceof Object
@@ -2094,11 +2170,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	                that.walk(i, fn)
 	            })
 	        }
-	    },
-	    insertProto: function (obj, proto) {
-	        var end = obj.__proto__
-	        obj.__proto__ = proto
-	        obj.__proto__.__proto__ = end
 	    },
 	    domRange: function (tar, before, after) {
 	        var children = []
@@ -2169,7 +2240,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	'use strict';
 
-	var _ns = 'z-'
+	var _ns = 'z-' // default namespace is z that means "Zect" 
 
 	module.exports = {
 	    set namespace (n) {
@@ -2184,8 +2255,11 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 7 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var util = __webpack_require__(5)
+	/**
+	 *  execute expression from template with specified Scope and ViewModel
+	 */
 
+	var util = __webpack_require__(5)
 	/**
 	 *  Calc expression value
 	 */
@@ -2202,19 +2276,20 @@ return /******/ (function(modules) { // webpackBootstrap
 	    try {
 	        return util.immutable(eval('with($scope){(%s)}'.replace('%s', arguments[2])))
 	    } catch (e) {
-	        var expr = '. {' + arguments[2] + '}'
-	        var label = arguments[3]
-	        var target = arguments[4]
+	        arguments[2] = /^\{/.test(arguments[2]) 
+	                        ? '. ' + arguments[2]
+	                        : '. {' + arguments[2] + '}' // expr
+	        // arguments[3] // label
+	        // arguments[4] // target
 	        switch (e.name) {
 	            case 'ReferenceError':
-	                console.warn(e.message + expr)
+	                console.warn(e.message + arguments[2])
 	                break
 	            default:
 	                console.error(
-	                     (label ? '\'' + label + '\': ' : ''),
-	                    e.message +
-	                    expr,
-	                    target || ''
+	                     (arguments[3] ? '\'' + arguments[3] + '\': ' : ''),
+	                    e.message + arguments[2],
+	                    arguments[4] || ''
 	                )
 	        }
 	        return ''
@@ -2251,14 +2326,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 	function _watch(vm, vars, update) {
 	    var watchKeys = []
-	    var noEmpty
 	    function _handler (kp) {
-	        var rel = watchKeys.some(function(key, index) {
+	        if (watchKeys.some(function(key, index) {
 	                if (_relative(kp, key)) {
 	                    return true
 	                }
-	            })
-	        if (rel) update.apply(null, arguments)
+	        })) update.apply(null, arguments)
 	    }
 
 	    if (vars && vars.length) {
@@ -2284,6 +2357,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	/**
 	 *  Compoiler constructor for wrapping node with consistent API
 	 *  @node <Node>
+	 *  // TODO it should not be named "compiler"
 	 */
 	function compiler (node) {
 	    this.$el = node
@@ -2292,11 +2366,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	var cproto = compiler.prototype
 
 	compiler.inherit = function (Ctor) {
-	    Ctor.prototype.__proto__ = cproto
-	    return function Compiler() {
-	        this.__proto__ = Ctor.prototype
+	    function SubCompiler() {
 	        Ctor.apply(this, arguments)
 	    }
+	    SubCompiler.prototype = Object.create(compiler.prototype)
+	    return SubCompiler
 	}
 	cproto.$bundle = function () {
 	    return this.$el
@@ -2346,7 +2420,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    if (def.multi) {
 	        // extract key and expr from "key: expression" format
-	        var key 
+	        var key
 	        expr = expr.replace(/^[^:]+:/, function (m) {
 	            key = m.replace(/:$/, '').trim()
 	            return ''
@@ -2456,7 +2530,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var $con = this.$container
 	        var that = this
 
-	        if (!$con.contains($ceil)) {
+	        if (!_contains($con, $ceil)) {
 	            util.domRange(_parentNode($ceil), $ceil, $floor)
 	                .forEach(function(n) {
 	                    _appendChild(that.$container, n)
@@ -2690,7 +2764,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	function _nextSibling (tar) {
 	    return tar.nextSibling
 	}
-
+	function _contains (con, tar) {
+	    return tar.parentNode === con
+	}
 
 	module.exports = compiler
 
@@ -2751,6 +2827,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	        })
 	        return vars
+	    },
+	    // variableOnly: function (expr) {
+	    //     return /^[a-zA-Z_$][\w$]*$/.test(expr)
+	    // },
+	    notFunctionCall: function (expr) {
+	        return !/[()]/.test(expr)
 	    }
 	}
 
@@ -2759,7 +2841,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
-	 *  Preset Global Directives
+	 *  Build-in Global Directives
 	 */
 
 	'use strict';
@@ -2806,6 +2888,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                var tagName = this.$el.tagName
 	                var type = tagName.toLowerCase()
 	                var $el = this._$el = $(this.$el)
+
 	                // pick input element type spec
 	                type = type == 'input' ? $el.attr('type') || 'text' : type
 
@@ -2841,30 +2924,29 @@ return /******/ (function(modules) { // webpackBootstrap
 	                var vType = type == 'checkbox' ? 'checked':'value'
 	                var that = this
 
-	                function _updateDOM() {
-	                    that.$el[vType] = vm.$get(prop)
-	                }
 	                /**
 	                 *  DOM input 2 state
 	                 */
 	                this._requestChange = function () {
-	                    vm.$set(prop, that.$el[vType])
+	                    vm.$set(that._prop, that.$el[vType])
 	                }
 	                /**
 	                 *  State 2 DOM input
 	                 */
-	                this._update = function (kp) {
-	                    _updateDOM()
+	                this._update = function () {
+	                    that.$el[vType] = vm.$get(that._prop)
 	                }
 	                $el.on(this.evtType, this._requestChange)
-	                _updateDOM()
-
 	                var watches = this._watches = []
 	                var wKeypath = util.normalize(prop)
 	                while (wKeypath) {
 	                    watches.push(this.$vm.$watch(wKeypath, this._update))
 	                    wKeypath = util.digest(wKeypath)
 	                }
+	            },
+	            update: function (prop) {
+	                this._prop = prop
+	                this._update()
 	            },
 	            unbind: function () {
 	                this._$el.off(this.evtType, this._requestChange)
@@ -2877,13 +2959,19 @@ return /******/ (function(modules) { // webpackBootstrap
 	            multi: true,
 	            watch: false,
 	            bind: function(evtType, handler, expression ) {
+	                this._expr = expression
+	                this.type = evtType
+	            },
+	            update: function (handler) {
+	                this.unbind()
+
 	                var fn = handler
 	                if (util.type(fn) !== 'function') 
-	                    return console.warn('"' + conf.namespace + 'on" only accept function. {' + expression + '}')
+	                    return console.warn('"' + conf.namespace + 'on" only accept function. {' + this._expr + '}')
 
 	                this.fn = fn.bind(this.$vm)
-	                this.type = evtType
-	                $(this.$el).on(evtType, this.fn, false)
+	                $(this.$el).on(this.type, this.fn, false)
+
 	            },
 	            unbind: function() {
 	                if (this.fn) {
@@ -2915,7 +3003,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
-	 *  Preset Global Custom-Elements
+	 *  Build-in Global Custom-Elements
 	 */
 
 	'use strict';
@@ -2923,11 +3011,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	var $ = __webpack_require__(2)
 	var conf = __webpack_require__(6)
 	var util = __webpack_require__(5)
+	var Scope = __webpack_require__(12)
+	var Expression = __webpack_require__(9)
 
 	function _getData (data) {
 	    return util.type(data) == 'object' ? util.copyObject(data) : {}
 	}
-
 	module.exports = function(Zect) {
 	    return {
 	        'if': {
@@ -2975,21 +3064,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    this.compiled = true
 
 	                    var $parent = this.$scope || {}
-	                    var $scope = {
-	                        data: $parent.data, // inherit parent scope's properties
-	                        bindings: [],
-	                        children: [],
-	                        $parent: $parent
-	                    }
-	                    var that = this
+	                    // inherit parent scope's properties
+	                    var $scope = new Scope($parent.data, $parent)
+	                    var protoUpdate = $scope.$update
 	                    $scope.$update = function () {
+	                        // the "if" element is sharing with $scope.data, 
+	                        // so it need to be updated
 	                        $scope.data = $parent.data
-	                        this.bindings.forEach(function (bd) {
-	                            bd.$update()
-	                        })
-	                        this.children.forEach(function (child) {
-	                            child.$update()
-	                        })
+	                        protoUpdate.apply($scope, arguments)
 	                    }
 	                    var $update = this.$update
 
@@ -3013,6 +3095,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	                if (!this.child) {
 	                    return console.warn('"' + conf.namespace + 'repeat"\'s childNode must has a HTMLElement node. {' + expr + '}')
 	                }
+	                // if use filter, Zect can't patch array by array-method
+	                this._noArrayFilter = Expression.notFunctionCall(expr)
 	            },
 	            delta: function (nv, pv, kp) {
 	                if (kp && /\d+/.test(kp.split('.')[1])) {
@@ -3044,8 +3128,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	                if (!items || !items.forEach) {
 	                    return console.warn('"' + conf.namespace + 'repeat" only accept Array data. {' + this.expr + '}')
 	                }
-
 	                var that = this
+
+	                /**
+	                 *  create a sub-vm for array item with specified index
+	                 */
 	                function createSubVM(item, index) {
 	                    var subEl = that.child.cloneNode(true)
 	                    var data = _getData(item)
@@ -3053,23 +3140,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    data.$index = index
 	                    data.$value = item
 
-	                    var hasParentScope = !!that.$scope
-
-	                    var $scope = {
-	                        data: data,
-	                        bindings: [], // collect all bindings
-	                        children: [],
-	                        $parent: that.$scope || {}
-	                    }
-	                    $scope.$update = function () {
-	                        this.bindings.forEach(function (bd) {
-	                            bd.$update()
-	                        })
-	                        this.children.forEach(function (child) {
-	                            child.$update()
-	                        })
-	                    }
-
+	                    var $scope = new Scope(data, that.$scope)
+	                    // this.$scope is a parent scope, 
+	                    // on the top of current scope
 	                    if(that.$scope) {
 	                        that.$scope.children.push($scope)
 	                    }
@@ -3095,34 +3168,48 @@ return /******/ (function(modules) { // webpackBootstrap
 	                    vm.$scope.$update()
 	                }
 
+	                // it's not modify
+	                if (method == 'splice' && args.length == 2 && (!args[1] || args[1] < 0)) return
+
 	                var $floor = this.$floor()
 	                var $ceil = this.$ceil()
-	                var vm
-	                var done
-	                switch (method) {
-	                    case 'splice':
-	                        args = [].slice.call(args)
+	                var arrayPatcher = {
+	                    splice: function () {
 	                        var ind = Number(args[0] || 0)
 	                        var len = Number(args[1] || 0)
 	                        var max = this.$vms.length
 	                        ind = ind > max ? max : ind
-	                        // has not modify
-	                        if (args.length == 2 && !len) return
-	                        else if (args.length > 2) {
-	                            // insert
-	                            var insertVms = args.slice(2).map(function (item, index) {
-	                                return createSubVM(item, start + index)
+	                        if (args.length > 2) {
+	                            /**
+	                             *  Insert
+	                             */
+	                            // create vms for each inserted item
+	                            var insertVms = [].slice.call(args, 2).map(function (item, index) {
+	                                return createSubVM(item, ind + index)
 	                            })
-	                            var start = ind + insertVms.length
-
+	                            // insert items into current $vms
 	                            this.$vms.splice.apply(this.$vms, [ind, len].concat(insertVms))
+
+	                            // element bound for inserted item vm element
+	                            $(insertVms.map(function (vm) {
+	                                return vm.$compiler.$bundle()
+	                            })).insertAfter(
+	                                ind == 0 
+	                                ? $ceil
+	                                : this.$vms[ind - 1].$compiler.$bundle()
+	                            )
+	                            // get last update index
+	                            var start = ind + insertVms.length
 	                            this.$vms.forEach(function (vm, i) {
 	                                if (i >= start) {
 	                                    updateVMIndex(vm, i)
 	                                }
 	                            })
+
 	                        } else {
-	                            // remove
+	                            /**
+	                             *  remove
+	                             */
 	                            this.$vms.splice
 	                                     .apply(this.$vms, args)
 	                                     .forEach(function (vm, i) {
@@ -3135,30 +3222,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	                                }
 	                            })
 	                        }
-	                        done = 1
-	                        break
-	                    case 'push':
+	                    },
+	                    push: function () {
 	                        var index = items.length - 1
-	                        vm = createSubVM(items[index], index)
+	                        var vm = createSubVM(items[index], index)
 	                        this.$vms.push(vm)
 	                        vm.$compiler.$insertBefore($floor)
-	                        done = 1
-	                        break
-	                    case 'pop':
-	                        vm = this.$vms.pop()
+	                    },
+	                    pop: function () {
+	                        var vm = this.$vms.pop()
 	                        destroyVM(vm)
-	                        done = 1
-	                        break
-	                    case 'shift':
-	                        vm = this.$vms.shift()
+	                    },
+	                    shift: function () {
+	                        var vm = this.$vms.shift()
 	                        destroyVM(vm)
 	                        this.$vms.forEach(function (v, i) {
 	                            updateVMIndex(v, i)
 	                        })
-	                        done = 1
-	                        break
-	                    case 'unshift':
-	                        vm = createSubVM(items[0], 0)
+	                    },
+	                    unshift: function () {
+	                        var vm = createSubVM(items[0], 0)
 	                        this.$vms.unshift(vm)
 	                        vm.$compiler.$insertAfter($ceil)
 	                        this.$vms.forEach(function (v, i) {
@@ -3166,21 +3249,20 @@ return /******/ (function(modules) { // webpackBootstrap
 	                                updateVMIndex(v, i)
 	                            }
 	                        })
-	                        done = 1
-	                        break
-	                    case '$concat':
-	                        var srcLen = this.$vms.length
-	                        var fragment = document.createDocumentFragment()
-	                        items.slice(srcLen).forEach(function (item, i) {
-	                            var vm = createSubVM(item, i + srcLen)
-	                            this.$vms.push(vm)
-	                            fragment.appendChild(vm.$compiler.$bundle())
-	                        }.bind(this))
-	                        $floor.parentNode.insertBefore(fragment, $floor)
-	                        done = 1
-	                        break
+	                    },
+	                    concat: function () {
+	                        var len = this.$vms.length
+	                        $(items.slice(len).map(function (item, i) {
+	                            var vm = createSubVM(item, i + len)
+	                            that.$vms.push(vm)
+	                            return vm.$compiler.$bundle()
+	                        })).insertBefore($floor)
+	                    }
 	                }
-	                if (done) {
+
+	                var patch = arrayPatcher[method]
+	                if (this._noArrayFilter && patch) {
+	                    patch.call(this)
 	                    this.last = util.copyArray(items)
 	                    return
 	                }
@@ -3250,6 +3332,34 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 	}
 
+
+/***/ },
+/* 12 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/**
+	 *  Scope abstraction is a colletor when compiler child template with scope 
+	 */
+
+	'use strict';
+
+	function Scope (data, parent) {
+	    this.data = data
+	    this.bindings = []
+	    this.children = []
+	    this.$parent = parent || {}
+	}
+
+	Scope.prototype.$update = function () {
+	    this.bindings.forEach(function (bd) {
+	        bd.$update()
+	    })
+	    this.children.forEach(function (child) {
+	        child.$update()
+	    })
+	}
+
+	module.exports = Scope
 
 /***/ }
 /******/ ])

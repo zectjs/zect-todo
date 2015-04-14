@@ -1,5 +1,5 @@
 /**
-* Mux.js v2.4.9
+* Mux.js v2.4.13
 * (c) 2014 guankaishe
 * Released under the MIT License.
 */
@@ -138,6 +138,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 *  Expose Keypath API
 	 */
 	Mux.keyPath = $keypath
+	Mux.utils = $util
 
 	/**
 	 *  Mux model factory
@@ -145,10 +146,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 	function MuxFactory(options) {
 
-	    return function (receiveProps) {
-	        if (!instanceOf(this, Mux)) $util.insertProto(this, Mux.prototype)
+	    function Class (receiveProps) {
 	        Ctor.call(this, options, receiveProps)
 	    }
+	    Class.prototype = Object.create(Mux.prototype)
+	    return Class
 	}
 	/**
 	 *  Mux's model class, could instance with "new" operator or call it directly.
@@ -163,19 +165,27 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var __muxid__ = allotId()
 	    var _isExternalEmitter =  !!options.emitter
 	    var _isExternalPrivateEmitter =  !!options._emitter
-	    var proto = {
-	        '__muxid__': __muxid__,
-	        '__kp__': __kp__
-	    }
 	    var _destroy // interanl destroyed flag
+	    var _priavateProperties = {}
 
-
-	    $util.insertProto(model, proto)
+	    _defProvateProperty('__muxid__', __muxid__)
+	    _defProvateProperty('__kp__', __kp__)
 	    /**
 	     *  return current keypath prefix of this model
 	     */
 	    function _rootPath () {
 	        return __kp__ || ''
+	    }
+
+	    /**
+	     *  define priavate property of the instance object
+	     */
+	    function _defProvateProperty(name, value) {
+	        _priavateProperties[name] = value
+	        $util.def(model, name, {
+	            enumerable: false,
+	            value: value
+	        })
 	    }
 
 	    var getter = options.props
@@ -532,7 +542,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        _emitChange(propname, dest.cur)
 	    }
 
-	     /*******************************
+	    /*******************************
 	               define instantiation's methods
 	     *******************************/
 	    /**
@@ -544,7 +554,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *  ------------------------
 	     *  @param propsObj <Object>
 	     */
-	    proto.$add = function(/* [propname [, defaultValue]] | propnameArray | propsObj */) {
+	    _defProvateProperty('$add', function(/* [propname [, defaultValue]] | propnameArray | propsObj */) {
 	        var args = arguments
 	        var first = args[0]
 	        var pn, pv
@@ -583,17 +593,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	                $warn('Unexpect params')
 	        }
 	        return this
-	    }
-	        /**
-	         *  define computed prop/props
-	         *  @param propname <String> property name
-	         *  @param deps <Array> computed property dependencies
-	         *  @param fn <Function> computed property getter
-	         *  @param enumerable <Boolean> Optional, whether property enumerable or not
-	         *  --------------------------------------------------
-	         *  @param propsObj <Object> define multiple properties
-	         */
-	    proto.$computed = function (propname, deps, getFn, setFn, enumerable/* | [propsObj]*/) {
+	    })
+	    /**
+	     *  define computed prop/props
+	     *  @param propname <String> property name
+	     *  @param deps <Array> computed property dependencies
+	     *  @param fn <Function> computed property getter
+	     *  @param enumerable <Boolean> Optional, whether property enumerable or not
+	     *  --------------------------------------------------
+	     *  @param propsObj <Object> define multiple properties
+	     */
+	    _defProvateProperty('$computed', function (propname, deps, getFn, setFn, enumerable/* | [propsObj]*/) {
 	        if ($type(propname) == STRING) {
 	            _$computed.apply(null, arguments)
 	        } else if ($type(propname) == OBJECT) {
@@ -604,7 +614,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            $warn('$computed params show be "(String, Array, Function, Function)" or "(Object)"')
 	        }
 	        return this
-	    }
+	    })
 	    /**
 	     *  subscribe prop change
 	     *  change prop/props value, it will be trigger change event
@@ -612,7 +622,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *  ---------------------
 	     *  @param kpMap <Object>
 	     */
-	    proto.$set = function( /*[kp, value] | [kpMap]*/ ) {
+	    _defProvateProperty('$set', function( /*[kp, value] | [kpMap]*/ ) {
 
 	        var args = arguments
 	        var len = args.length
@@ -625,14 +635,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	        }
 
 	        return this
-	    }
+	    })
 
 	    /**
 	     *  Get property value by name, using for get value of computed property without cached
 	     *  change prop/props value, it will be trigger change event
 	     *  @param kp <String> keyPath
 	     */
-	    proto.$get = function(kp) {
+	    _defProvateProperty('$get', function(kp) {
 	        if ($indexOf(_observableKeys, kp)) 
 	            return _props[kp]
 	        else if ($indexOf(_computedKeys, kp)) {
@@ -647,14 +657,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	                return $keypath.get(_props, normalKP)
 	            }
 	        }
-	    }
+	    })
 	    /**
 	     *  if params is (key, callback), add callback to key's subscription
 	     *  if params is (callback), subscribe any prop change events of this model
 	     *  @param key <String> optional
 	     *  @param callback <Function>
 	     */
-	    proto.$watch =  function( /*[key, ]callback*/ ) {
+	    _defProvateProperty('$watch', function( /*[key, ]callback*/ ) {
 	        var args = arguments
 	        var len = args.length
 	        var first = args[0]
@@ -675,7 +685,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return function() {
 	            that.$unwatch.apply(that, args)
 	        }
-	    }
+	    })
 	    /**
 	     *  unsubscribe prop change
 	     *  if params is (key, callback), remove callback from key's subscription
@@ -684,7 +694,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *  @param key <String>
 	     *  @param callback <Function>
 	     */
-	    proto.$unwatch = function( /*[key, ] [callback] */ ) {
+	    _defProvateProperty('$unwatch', function( /*[key, ] [callback] */ ) {
 	        var args = arguments
 	        var len = args.length
 	        var first = args[0]
@@ -712,42 +722,45 @@ return /******/ (function(modules) { // webpackBootstrap
 	            emitter.off.apply(emitter, params)
 	        }
 	        return this
-	    }
+	    })
 	    /**
 	     *  Return all properties without computed properties
 	     *  @return <Object>
 	     */
-	    proto.$props = function() {
+	    _defProvateProperty('$props', function() {
 	        return $util.copyObject(_props)
-	    }
+	    })
 	    /**
 	     *  Reset event emitter
 	     *  @param em <Object> emitter
 	     */
-	    proto.$emitter = function (em, _pem) {
+	    _defProvateProperty('$emitter', function (em, _pem) {
 	        // return emitter instance if args is empty, 
 	        // for share some emitter with other instance
 	        if (arguments.length == 0) return emitter
 	        emitter = em
 	        _walkResetEmiter(this.$props(), em, _pem)
 	        return this
-	    }
+	    })
 	    /**
 	     *  set emitter directly
 	     */
-	    proto._$emitter = function (em) {
+	    _defProvateProperty('_$emitter', function (em) {
 	        emitter = em
-	    }
+	    })
 	    /**
 	     *  set private emitter directly
 	     */
-	    proto._$_emitter = function (em) {
+	    _defProvateProperty('_$_emitter', function (em) {
 	        instanceOf(em, $Message) && (_emitter = em)
-	    }
-	    proto.$destroy = function () {
+	    })
+	    /**
+	     *  Call destroy will release all private properties and variables
+	     */
+	    _defProvateProperty('$destroy', function () {
 	        // clean up all proto methods
-	        $util.objEach(proto, function (k, v) {
-	            if ($type(v) == FUNCTION && k != '$destroyed') proto[k] = _destroyNotice
+	        $util.objEach(_priavateProperties, function (k, v) {
+	            if ($type(v) == FUNCTION && k != '$destroyed') _priavateProperties[k] = _destroyNotice
 	        })
 
 	        if (!_isExternalEmitter) emitter.off()
@@ -767,10 +780,13 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	        // destroy external flag
 	        _destroy = true
-	    }
-	    proto.$destroyed = function () {
+	    })
+	    /**
+	     *  This method is used to check the instance is destroyed or not
+	     */
+	    _defProvateProperty('$destroyed', function () {
 	        return _destroy
-	    }
+	    })
 	    /**
 	     *  A shortcut of $set(props) while instancing
 	     */
@@ -1088,7 +1104,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (!obj) return
 	        for(var key in obj) {
 	            if (hasOwn(obj, key)) {
-	                fn(key, obj[key])
+	                if(fn(key, obj[key]) === false) break
 	            }
 	        }
 	    },
@@ -1141,11 +1157,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	            case 'array': return this.copyArray(v)
 	            default: return v
 	        }
-	    },
-	    insertProto: function (obj, proto) {
-	        var end = obj.__proto__
-	        obj.__proto__ = proto
-	        obj.__proto__.__proto__ = end
 	    },
 	    def: function () {
 	        return Object.defineProperty.apply(Object, arguments)

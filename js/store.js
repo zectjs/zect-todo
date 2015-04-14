@@ -5,13 +5,13 @@
 	'use strict';
 
 	var STORAGE_KEY = 'todos-zectjs';
-
+	var storage = window.localStorage || window.Storage
 	exports.todoStorage = {
 		fetch: function () {
-			return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+			return JSON.parse(storage.getItem(STORAGE_KEY) || '[]');
 		},
 		save: function (todos) {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+			storage.setItem(STORAGE_KEY, JSON.stringify(todos));
 		}
 	};
 

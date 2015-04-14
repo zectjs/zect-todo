@@ -23,14 +23,12 @@ var keywords = ['$index', '$value', '$parent', '$vm', '$scope']
  */
 function _watch(vm, vars, update) {
     var watchKeys = []
-    var noEmpty
     function _handler (kp) {
-        var rel = watchKeys.some(function(key, index) {
+        if (watchKeys.some(function(key, index) {
                 if (_relative(kp, key)) {
                     return true
                 }
-            })
-        if (rel) update.apply(null, arguments)
+        })) update.apply(null, arguments)
     }
 
     if (vars && vars.length) {
@@ -56,6 +54,7 @@ var _strip = Expression.strip
 /**
  *  Compoiler constructor for wrapping node with consistent API
  *  @node <Node>
+ *  // TODO it should not be named "compiler"
  */
 function compiler (node) {
     this.$el = node
@@ -64,11 +63,11 @@ function compiler (node) {
 var cproto = compiler.prototype
 
 compiler.inherit = function (Ctor) {
-    Ctor.prototype.__proto__ = cproto
-    return function Compiler() {
-        this.__proto__ = Ctor.prototype
+    function SubCompiler() {
         Ctor.apply(this, arguments)
     }
+    SubCompiler.prototype = Object.create(compiler.prototype)
+    return SubCompiler
 }
 cproto.$bundle = function () {
     return this.$el
@@ -118,7 +117,7 @@ var Directive = compiler.Directive = compiler.inherit(function (vm, scope, tar, 
 
     if (def.multi) {
         // extract key and expr from "key: expression" format
-        var key 
+        var key
         expr = expr.replace(/^[^:]+:/, function (m) {
             key = m.replace(/:$/, '').trim()
             return ''
@@ -228,7 +227,7 @@ compiler.Element = compiler.inherit(function (vm, scope, tar, def, name, expr) {
         var $con = this.$container
         var that = this
 
-        if (!$con.contains($ceil)) {
+        if (!_contains($con, $ceil)) {
             util.domRange(_parentNode($ceil), $ceil, $floor)
                 .forEach(function(n) {
                     _appendChild(that.$container, n)
@@ -462,6 +461,8 @@ function _parentNode (tar) {
 function _nextSibling (tar) {
     return tar.nextSibling
 }
-
+function _contains (con, tar) {
+    return tar.parentNode === con
+}
 
 module.exports = compiler

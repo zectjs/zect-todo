@@ -1,10 +1,10 @@
 /*global Vue, todoStorage */
-
-(function (exports) {
+var insp_times = {}   
+;(function (exports) {
 
 	'use strict';
 	Zect.namespace('v')
-	console.time('running...')
+	// console.time('running...')
 	var _todoId = 1
 	exports.app = new Zect({
 
@@ -106,9 +106,9 @@
 				if (!value) {
 					return;
 				}
-				console.time('add')
+				// console.time('add')
 				this.$data.todos.push({ title: value, completed: false , id: _todoId ++ });
-				console.timeEnd('add')
+				// console.timeEnd('add')
 				this.$data.newTodo = '';
 			},
 
@@ -158,5 +158,5 @@
 			}
 		}
 	});
-	console.timeEnd('running...')
+	// console.timeEnd('running...')
 })(window);

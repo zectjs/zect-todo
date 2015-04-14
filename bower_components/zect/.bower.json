@@ -1,6 +1,7 @@
 {
   "name": "zect",
   "main": "index.js",
+  "version": "1.1.7",
   "homepage": "https://github.com/switer/Zect",
   "authors": [
     "switer <guankaishe@gmail.com>"
@@ -24,11 +25,11 @@
     "test",
     "tests"
   ],
-  "_release": "3a3817a0b6",
+  "_release": "1.1.7",
   "_resolution": {
-    "type": "branch",
-    "branch": "master",
-    "commit": "3a3817a0b6b7712e513fc7e8c46b15f4bbe6126c"
+    "type": "version",
+    "tag": "1.1.7",
+    "commit": "bc1ad276a2dd679855799a9bedd1b114cb146ca8"
   },
   "_source": "git://github.com/switer/Zect.git",
   "_target": "*",
