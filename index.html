@@ -3,23 +3,24 @@
 	<head>
 		<meta charset="utf-8">
 		<title>Zect • TodoMVC</title>
-		<link rel="stylesheet" href="bower_components/todomvc-common/base.css">
+		<link rel="stylesheet" href="node_modules/todomvc-common/base.css">
+		<link rel="stylesheet" href="node_modules/todomvc-app-css/index.css">
 		<style> [v-cloak] { display: none; } </style>
 	</head>
-	<body>
-		<section id="todoapp">
-			<header id="header">
+	<body >
+		<section id="todoapp" class="todoapp">
+			<header class="header">
 				<h1>todos</h1>
-				<input id="new-todo" autofocus autocomplete="off" 
+				<input class="new-todo" autofocus autocomplete="off" 
 					placeholder="What needs to be done?" 
 					v-model="newTodo" 
 					v-on="{keyup:addTodo}">
 			</header>
-			<section id="main" v-show="{todos.length}" v-cloak>
-				<input id="toggle-all" type="checkbox" 
+			<section class="main" v-show="{todos.length}">
+				<input class="toggle-all" type="checkbox" 
 					v-model="allDone"
 				/>
-				<ul id="todo-list">
+				<ul class="todo-list">
 					<v-repeat items="{todos}">
 						<v-if is="{filters[activeFilter]($value)}">
 							<li class="todo" data-index="{$index}"
@@ -46,29 +47,27 @@
 					</v-repeat>
 				</ul>
 			</section>
-			<footer id="footer" v-show="todos.length" v-cloak>
-				<span id="todo-count">
-					<strong>{remaining}</strong>
-				</span>
+			<footer class="footer" v-show="todos.length">
+				<span class="todo-count"><strong>{remaining}</strong> item left</span>
 
-				<ul id="filters">
+				<ul class="filters">
 					<li><a href="#/all" v-class="{selected: activeFilter == 'all'}">All</a></li>
 					<li><a href="#/active" v-class="{selected: activeFilter == 'active'}">Active</a></li>
 					<li><a href="#/completed" v-class="{selected: activeFilter == 'completed'}">Completed</a></li>
 				</ul>
-				<button id="clear-completed" v-on="{click: removeCompleted}" v-show="{todos.length > remaining}">
+				<button class="clear-completed" v-on="{click: removeCompleted}" v-show="{todos.length > remaining}">
 					Clear completed ({todos.length - remaining})
 				</button>
 			</footer>
 		</section>
 
-		<footer id="info">
+		<footer class="info">
 			<p>Double-click to edit a todo</p>
 			<p>Written by <a href="https://github.com/switer/Zect">Switer</a></p>
 		</footer>
 
-		<script src="bower_components/todomvc-common/base.js"></script>
-		<script src="bower_components/zect/dist/zect.js"></script>
+		<script src="node_modules/todomvc-common/base.js"></script>
+		<script src="node_modules/zect/dist/zect.js"></script>
 		<script src="js/store.js"></script>
 		<script src="js/app.js"></script>
 	</body>
