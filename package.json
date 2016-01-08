@@ -1,0 +1,29 @@
+{
+  "name": "zect-todo",
+  "version": "1.0.0",
+  "description": "Todo mvc for zect.js",
+  "main": "index.html",
+  "scripts": {
+    "test": "node test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zectjs/zect-todo.git"
+  },
+  "keywords": [
+    "Zect",
+    "todo",
+    "mvc"
+  ],
+  "author": "switer",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zectjs/zect-todo/issues"
+  },
+  "homepage": "https://github.com/zectjs/zect-todo#readme",
+  "dependencies": {
+    "todomvc-app-css": "^2.0.3",
+    "todomvc-common": "^1.0.2",
+    "zect": "^1.2.15"
+  }
+}
